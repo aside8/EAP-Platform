@@ -3,6 +3,7 @@ package com.github.aside8.eap.protocol.secs2;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
+import lombok.Getter;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -13,12 +14,13 @@ import java.util.Collections;
 import java.util.List;
 
 public final class SecsDataItem implements SECSII {
+    @Getter
     private SecsFormatCode formatCode;
     private byte[] value;
     private List<SECSII> listItems;
 
     public SecsDataItem() {
-        this.formatCode = SecsFormatCode.L; // Default to List, will be updated during decode
+        this.formatCode = SecsFormatCode.LIST; // Default to List, will be updated during decode
         this.listItems = Collections.emptyList();
         this.value = new byte[0];
     }
@@ -31,35 +33,19 @@ public final class SecsDataItem implements SECSII {
     }
 
     // Static factory methods
-    public static SecsDataItem ofList(SECSII... items) {
+    public static SecsDataItem list(SECSII... items) {
         List<SECSII> itemList = (items != null) ? Arrays.asList(items) : Collections.emptyList();
-        return new SecsDataItem(SecsFormatCode.L, null, itemList);
+        return new SecsDataItem(SecsFormatCode.LIST, null, itemList);
     }
 
-    public static SecsDataItem ofU4(long... values) {
+    public static SecsDataItem binary(byte... values) {
         if (values == null) {
-            return new SecsDataItem(SecsFormatCode.U4, new byte[0], null);
+            return new SecsDataItem(SecsFormatCode.BINARY, new byte[0], null);
         }
-        for (long value : values) {
-            if (value < 0 || value > 0xFFFFFFFFL) {
-                throw new IllegalArgumentException("U4 values must be between 0 and 0xFFFFFFFFL");
-            }
-        }
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 4);
-        for (long value : values) {
-            bb.putInt((int) value);
-        }
-        return new SecsDataItem(SecsFormatCode.U4, bb.array(), null);
+        return new SecsDataItem(SecsFormatCode.BINARY, values, null);
     }
 
-    public static SecsDataItem ofBinary(byte... values) {
-        if (values == null) {
-            return new SecsDataItem(SecsFormatCode.B, new byte[0], null);
-        }
-        return new SecsDataItem(SecsFormatCode.B, values, null);
-    }
-
-    public static SecsDataItem ofBoolean(boolean... values) {
+    public static SecsDataItem bool(boolean... values) {
         if (values == null) {
             return new SecsDataItem(SecsFormatCode.BOOLEAN, new byte[0], null);
         }
@@ -70,111 +56,104 @@ public final class SecsDataItem implements SECSII {
         return new SecsDataItem(SecsFormatCode.BOOLEAN, byteValues, null);
     }
 
-    public static SecsDataItem ofAscii(String value, Charset charset) {
+    public static SecsDataItem ascii(String value, Charset charset) {
         if (value == null) {
-            return new SecsDataItem(SecsFormatCode.A, new byte[0], null);
+            return new SecsDataItem(SecsFormatCode.ASCII, new byte[0], null);
         }
-        return new SecsDataItem(SecsFormatCode.A, value.getBytes(charset), null);
+        return new SecsDataItem(SecsFormatCode.ASCII, value.getBytes(charset), null);
     }
-    
-    public static SecsDataItem ofAscii(String value) {
+
+    public static SecsDataItem ascii(String value) {
         // Per SECS standard, 'A' format is US-ASCII.
-        return ofAscii(value, StandardCharsets.US_ASCII);
+        return ascii(value, StandardCharsets.US_ASCII);
     }
 
-    public static SecsDataItem ofI8(long... values) {
+
+    public static SecsDataItem int8(long... values) {
+        SecsFormatCode formatCode = SecsFormatCode.INT8;
         if (values == null) {
-            return new SecsDataItem(SecsFormatCode.I8, new byte[0], null);
+            return new SecsDataItem(formatCode, new byte[0], null);
         }
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 8);
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
         for (long value : values) {
             bb.putLong(value);
         }
-        return new SecsDataItem(SecsFormatCode.I8, bb.array(), null);
+        return new SecsDataItem(formatCode, bb.array(), null);
     }
 
-    public static SecsDataItem ofU8(long... values) {
+    public static SecsDataItem int1(byte... values) {
+        SecsFormatCode formatCode = SecsFormatCode.INT1;
         if (values == null) {
-            return new SecsDataItem(SecsFormatCode.U8, new byte[0], null);
+            return new SecsDataItem(formatCode, new byte[0], null);
         }
-        // ByteBuffer handles 8-byte longs directly
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 8);
-        for (long value : values) {
-            bb.putLong(value);
-        }
-        return new SecsDataItem(SecsFormatCode.U8, bb.array(), null);
+        return new SecsDataItem(formatCode, values, null);
     }
 
-    public static SecsDataItem ofF8(double... values) {
+    public static SecsDataItem int2(short... values) {
+        SecsFormatCode formatCode = SecsFormatCode.INT2;
         if (values == null) {
-            return new SecsDataItem(SecsFormatCode.F8, new byte[0], null);
+            return new SecsDataItem(formatCode, new byte[0], null);
         }
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 8);
-        for (double value : values) {
-            bb.putDouble(value);
-        }
-        return new SecsDataItem(SecsFormatCode.F8, bb.array(), null);
-    }
-
-    public static SecsDataItem ofF4(float... values) {
-        if (values == null) {
-            return new SecsDataItem(SecsFormatCode.F4, new byte[0], null);
-        }
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 4);
-        for (float value : values) {
-            bb.putFloat(value);
-        }
-        return new SecsDataItem(SecsFormatCode.F4, bb.array(), null);
-    }
-
-    public static SecsDataItem ofI4(int... values) {
-        if (values == null) {
-            return new SecsDataItem(SecsFormatCode.I4, new byte[0], null);
-        }
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 4);
-        for (int value : values) {
-            bb.putInt(value);
-        }
-        return new SecsDataItem(SecsFormatCode.I4, bb.array(), null);
-    }
-
-    public static SecsDataItem ofI2(short... values) {
-        if (values == null) {
-            return new SecsDataItem(SecsFormatCode.I2, new byte[0], null);
-        }
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 2);
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
         for (short value : values) {
             bb.putShort(value);
         }
-        return new SecsDataItem(SecsFormatCode.I2, bb.array(), null);
+        return new SecsDataItem(formatCode, bb.array(), null);
     }
 
-    public static SecsDataItem ofU2(int... values) {
+    public static SecsDataItem int4(int... values) {
+        SecsFormatCode formatCode = SecsFormatCode.INT4;
         if (values == null) {
-            return new SecsDataItem(SecsFormatCode.U2, new byte[0], null);
+            return new SecsDataItem(formatCode, new byte[0], null);
         }
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
         for (int value : values) {
-            if (value < 0 || value > 0xFFFF) {
-                throw new IllegalArgumentException("U2 values must be between 0 and 0xFFFF");
-            }
+            bb.putInt(value);
         }
-        ByteBuffer bb = ByteBuffer.allocate(values.length * 2);
-        for (int value : values) {
-            bb.putShort((short) value);
-        }
-        return new SecsDataItem(SecsFormatCode.U2, bb.array(), null);
+        return new SecsDataItem(formatCode, bb.array(), null);
     }
 
-    public static SecsDataItem ofI1(byte... values) {
+    public static SecsDataItem float8(double... values) {
+        SecsFormatCode formatCode = SecsFormatCode.FLOAT8;
         if (values == null) {
-            return new SecsDataItem(SecsFormatCode.I1, new byte[0], null);
+            return new SecsDataItem(formatCode, new byte[0], null);
         }
-        return new SecsDataItem(SecsFormatCode.I1, values, null);
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
+        for (double value : values) {
+            bb.putDouble(value);
+        }
+        return new SecsDataItem(formatCode, bb.array(), null);
     }
 
-    public static SecsDataItem ofU1(short... values) {
+    public static SecsDataItem float4(float... values) {
+        SecsFormatCode formatCode = SecsFormatCode.FLOAT4;
         if (values == null) {
-            return new SecsDataItem(SecsFormatCode.U1, new byte[0], null);
+            return new SecsDataItem(formatCode, new byte[0], null);
+        }
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
+        for (float value : values) {
+            bb.putFloat(value);
+        }
+        return new SecsDataItem(formatCode, bb.array(), null);
+    }
+
+    public static SecsDataItem uint8(long... values) {
+        SecsFormatCode formatCode = SecsFormatCode.UINT8;
+        if (values == null) {
+            return new SecsDataItem(formatCode, new byte[0], null);
+        }
+        // ByteBuffer handles 8-byte longs directly
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
+        for (long value : values) {
+            bb.putLong(value);
+        }
+        return new SecsDataItem(formatCode, bb.array(), null);
+    }
+
+    public static SecsDataItem uint1(short... values) {
+        SecsFormatCode formatCode = SecsFormatCode.UINT1;
+        if (values == null) {
+            return new SecsDataItem(formatCode, new byte[0], null);
         }
         byte[] byteValues = new byte[values.length];
         for (int i = 0; i < values.length; i++) {
@@ -183,16 +162,51 @@ public final class SecsDataItem implements SECSII {
             }
             byteValues[i] = (byte) values[i];
         }
-        return new SecsDataItem(SecsFormatCode.U1, byteValues, null);
+        return new SecsDataItem(formatCode, byteValues, null);
     }
 
+    public static SecsDataItem uint2(int... values) {
+        SecsFormatCode formatCode = SecsFormatCode.UINT2;
+        if (values == null) {
+            return new SecsDataItem(formatCode, new byte[0], null);
+        }
+        for (int value : values) {
+            if (value < 0 || value > 0xFFFF) {
+                throw new IllegalArgumentException("U2 values must be between 0 and 0xFFFF");
+            }
+        }
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
+        for (int value : values) {
+            bb.putShort((short) value);
+        }
+        return new SecsDataItem(formatCode, bb.array(), null);
+    }
+
+    public static SecsDataItem uint4(long... values) {
+        SecsFormatCode formatCode = SecsFormatCode.UINT4;
+        if (values == null) {
+            return new SecsDataItem(formatCode, new byte[0], null);
+        }
+
+        for (long value : values) {
+            if (value < 0 || value > 0xFFFFFFFFL) {
+                throw new IllegalArgumentException("U4 values must be between 0 and 0xFFFFFFFFL");
+            }
+        }
+
+        ByteBuffer bb = ByteBuffer.allocate(values.length * formatCode.getSize());
+        for (long value : values) {
+            bb.putInt((int) value);
+        }
+        return new SecsDataItem(formatCode, bb.array(), null);
+    }
 
     @Override
     public ByteBuf encode(ByteBufAllocator allocator) {
         ByteBuf dataBuf;
         int length;
 
-        if (formatCode == SecsFormatCode.L) {
+        if (formatCode == SecsFormatCode.LIST) {
             dataBuf = allocator.buffer();
             if (listItems != null) {
                 for (SECSII item : listItems) {
@@ -252,11 +266,8 @@ public final class SecsDataItem implements SECSII {
         this.listItems = null; // Clear previous values
         this.value = null;
 
-        if (formatCode == SecsFormatCode.L) {
+        if (formatCode == SecsFormatCode.LIST) {
             List<SECSII> decodedList = new ArrayList<>();
-            ByteBuf subBuffer = in.readSlice(length); // This is where the error was, it should be totalLength
-            // The previous code had a bug here. It should be based on number of items, not bytes for lists.
-            // But the length *is* number of items for L. So it's not bytes.
             for (int i = 0; i < length; i++) {
                 SecsDataItem item = new SecsDataItem();
                 item.decode(in);
@@ -270,53 +281,28 @@ public final class SecsDataItem implements SECSII {
         }
     }
 
-    public SecsFormatCode getFormatCode() {
-        return formatCode;
-    }
-
-    public List<SECSII> getListItems() {
-        if (formatCode != SecsFormatCode.L) {
-            throw new IllegalStateException("Not a List item.");
-        }
-        return listItems != null ? Collections.unmodifiableList(listItems) : Collections.emptyList();
-    }
-    
     public byte[] getRawBytes() {
-        if (formatCode == SecsFormatCode.L) {
+        if (formatCode == SecsFormatCode.LIST) {
             throw new IllegalStateException("Cannot get raw bytes for a List item.");
         }
         return value;
     }
 
-    public String getAscii(Charset charset) {
-        if (formatCode != SecsFormatCode.A) {
-            throw new IllegalStateException("Not an ASCII item.");
-        }
-        return (value != null) ? new String(value, charset) : "";
-    }
-    
-    public String getAscii() {
-        // Default to UTF-8 as requested, though US-ASCII is standard.
-        return getAscii(StandardCharsets.UTF_8);
-    }
-    
     // Helper for reading from byte array
     private ByteBuffer getByteBuffer() {
         return (value != null) ? ByteBuffer.wrap(value) : ByteBuffer.allocate(0);
     }
 
-    public long[] getU4() {
-        if (formatCode != SecsFormatCode.U4) throw new IllegalStateException("Format is " + formatCode);
-        ByteBuffer bb = getByteBuffer();
-        long[] result = new long[bb.remaining() / 4];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = bb.getInt() & 0xFFFFFFFFL;
+
+    public List<SECSII> getList() {
+        if (formatCode != SecsFormatCode.LIST) {
+            throw new IllegalStateException("Not a List item.");
         }
-        return result;
+        return listItems != null ? Collections.unmodifiableList(listItems) : Collections.emptyList();
     }
-    
+
     public byte[] getBinary() {
-        if (formatCode != SecsFormatCode.B) throw new IllegalStateException("Format is " + formatCode);
+        if (formatCode != SecsFormatCode.BINARY) throw new IllegalStateException("Format is " + formatCode);
         return value;
     }
 
@@ -330,82 +316,104 @@ public final class SecsDataItem implements SECSII {
         return result;
     }
 
-    public long[] getI8() {
-        if (formatCode != SecsFormatCode.I8) throw new IllegalStateException("Format is " + formatCode);
+    public String getAscii(Charset charset) {
+        if (formatCode != SecsFormatCode.ASCII) {
+            throw new IllegalStateException("Not an ASCII item.");
+        }
+        return (value != null) ? new String(value, charset) : "";
+    }
+    
+    public String getAscii() {
+        // Default to UTF-8 as requested, though US-ASCII is standard.
+        return getAscii(StandardCharsets.UTF_8);
+    }
+
+    public long[] getInt8() {
+        if (formatCode != SecsFormatCode.INT8) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
-        long[] result = new long[bb.remaining() / 8];
+        long[] result = new long[bb.remaining() / formatCode.getSize()];
         for (int i = 0; i < result.length; i++) {
             result[i] = bb.getLong();
         }
         return result;
     }
-    
-    public long[] getU8() {
-        if (formatCode != SecsFormatCode.U8) throw new IllegalStateException("Format is " + formatCode);
-        return getI8(); // Java doesn't have unsigned longs, so treat as signed for retrieval
-    }
-    
-    public double[] getF8() {
-        if (formatCode != SecsFormatCode.F8) throw new IllegalStateException("Format is " + formatCode);
-        ByteBuffer bb = getByteBuffer();
-        double[] result = new double[bb.remaining() / 8];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = bb.getDouble();
-        }
-        return result;
-    }
 
-    public float[] getF4() {
-        if (formatCode != SecsFormatCode.F4) throw new IllegalStateException("Format is " + formatCode);
-        ByteBuffer bb = getByteBuffer();
-        float[] result = new float[bb.remaining() / 4];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = bb.getFloat();
-        }
-        return result;
+    public byte[] getInt1() {
+        if (formatCode != SecsFormatCode.INT1) throw new IllegalStateException("Format is " + formatCode);
+        return value;
     }
     
-    public int[] getI4() {
-        if (formatCode != SecsFormatCode.I4) throw new IllegalStateException("Format is " + formatCode);
+    public short[] getInt2() {
+        if (formatCode != SecsFormatCode.INT2) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
-        int[] result = new int[bb.remaining() / 4];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = bb.getInt();
-        }
-        return result;
-    }
-    
-    public short[] getI2() {
-        if (formatCode != SecsFormatCode.I2) throw new IllegalStateException("Format is " + formatCode);
-        ByteBuffer bb = getByteBuffer();
-        short[] result = new short[bb.remaining() / 2];
+        short[] result = new short[bb.remaining() / formatCode.getSize()];
         for (int i = 0; i < result.length; i++) {
             result[i] = bb.getShort();
         }
         return result;
     }
 
-    public int[] getU2() {
-        if (formatCode != SecsFormatCode.U2) throw new IllegalStateException("Format is " + formatCode);
+    public int[] getInt4() {
+        if (formatCode != SecsFormatCode.INT4) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
-        int[] result = new int[bb.remaining() / 2];
+        int[] result = new int[bb.remaining() / formatCode.getSize()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = bb.getInt();
+        }
+        return result;
+    }
+
+    public double[] getFloat8() {
+        if (formatCode != SecsFormatCode.FLOAT8) throw new IllegalStateException("Format is " + formatCode);
+        ByteBuffer bb = getByteBuffer();
+        double[] result = new double[bb.remaining() / formatCode.getSize()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = bb.getDouble();
+        }
+        return result;
+    }
+
+    public float[] getFloat4() {
+        if (formatCode != SecsFormatCode.FLOAT4) throw new IllegalStateException("Format is " + formatCode);
+        ByteBuffer bb = getByteBuffer();
+        float[] result = new float[bb.remaining() / formatCode.getSize()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = bb.getFloat();
+        }
+        return result;
+    }
+
+    public long[] getUint8() {
+        if (formatCode != SecsFormatCode.UINT8) throw new IllegalStateException("Format is " + formatCode);
+        return getInt8(); // Java doesn't have unsigned longs, so treat as signed for retrieval
+    }
+
+    public short[] getUint1() {
+        if (formatCode != SecsFormatCode.UINT1) throw new IllegalStateException("Format is " + formatCode);
+        ByteBuffer bb = getByteBuffer();
+        short[] result = new short[bb.remaining()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = (short) (bb.get() & 0xFF);
+        }
+        return result;
+    }
+
+    public int[] getUint2() {
+        if (formatCode != SecsFormatCode.UINT2) throw new IllegalStateException("Format is " + formatCode);
+        ByteBuffer bb = getByteBuffer();
+        int[] result = new int[bb.remaining() / formatCode.getSize()];
         for (int i = 0; i < result.length; i++) {
             result[i] = bb.getShort() & 0xFFFF;
         }
         return result;
     }
-    
-    public byte[] getI1() {
-        if (formatCode != SecsFormatCode.I1) throw new IllegalStateException("Format is " + formatCode);
-        return value;
-    }
-    
-    public short[] getU1() {
-        if (formatCode != SecsFormatCode.U1) throw new IllegalStateException("Format is " + formatCode);
+
+    public long[] getUint4() {
+        if (formatCode != SecsFormatCode.UINT4) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
-        short[] result = new short[bb.remaining()];
+        long[] result = new long[bb.remaining() / formatCode.getSize()];
         for (int i = 0; i < result.length; i++) {
-            result[i] = (short) (bb.get() & 0xFF);
+            result[i] = bb.getInt() & 0xFFFFFFFFL;
         }
         return result;
     }
