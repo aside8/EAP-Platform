@@ -417,4 +417,99 @@ public final class SecsDataItem implements SECSII {
         }
         return result;
     }
+
+    @Override
+    public String toString() {
+        return toFormatString();
+    }
+
+    public String toFormatString() {
+        StringBuilder sb = new StringBuilder();
+        toFormatString(sb, 0);
+        return sb.toString();
+    }
+
+    private void toFormatString(StringBuilder sb, int indent) {
+        sb.append("  ".repeat(Math.max(0, indent)));
+        sb.append("<").append(formatCode.getSymbol()).append(" [");
+
+        if (formatCode == SecsFormatCode.LIST) {
+            int size = (listItems != null) ? listItems.size() : 0;
+            sb.append(size).append("]");
+
+            if (size == 0) {
+                sb.append(">\n");
+                return;
+            }
+
+            sb.append("\n");
+
+            if (listItems != null) {
+                for (SECSII item : listItems) {
+                    if (item instanceof SecsDataItem) {
+                        ((SecsDataItem) item).toFormatString(sb, indent + 1);
+                    }
+                }
+            }
+            sb.append("  ".repeat(Math.max(0, indent)));
+            sb.append(">\n");
+
+        } else {
+            int length = (value != null) ? value.length : 0;
+            int size = (formatCode.getSize() > 0 && length > 0) ? length / formatCode.getSize() : length;
+            sb.append(size).append("] ");
+
+            if (value != null) {
+                switch (formatCode) {
+                    case ASCII:
+                        sb.append("\"").append(getAscii()).append("\"");
+                        break;
+                    case INT1:
+                        sb.append(Arrays.toString(getInt1()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case INT2:
+                        sb.append(Arrays.toString(getInt2()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case INT4:
+                        sb.append(Arrays.toString(getInt4()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case INT8:
+                        sb.append(Arrays.toString(getInt8()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case UINT1:
+                        sb.append(Arrays.toString(getUint1()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case UINT2:
+                        sb.append(Arrays.toString(getUint2()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case UINT4:
+                        sb.append(Arrays.toString(getUint4()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case UINT8:
+                        sb.append(Arrays.toString(getUint8()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case FLOAT4:
+                        sb.append(Arrays.toString(getFloat4()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case FLOAT8:
+                        sb.append(Arrays.toString(getFloat8()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case BOOLEAN:
+                        sb.append(Arrays.toString(getBoolean()).replaceAll("[\\[\\],]", ""));
+                        break;
+                    case BINARY:
+                        StringBuilder hex = new StringBuilder();
+                        for (byte b : value) {
+                            hex.append(String.format("0x%02X ", b));
+                        }
+                        sb.append(hex.toString().trim());
+                        break;
+                    default:
+                        sb.append("...");
+                        break;
+                }
+            }
+            sb.append(">\n");
+        }
+    }
 }
