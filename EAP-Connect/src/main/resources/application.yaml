@@ -1,0 +1,22 @@
+server:
+    port: 8081
+
+# Spring Boot Actuator 配置
+management:
+  endpoints:
+    web:
+      # 将 Actuator 基础路径为 /actuator
+      base-path: /actuator
+      exposure:
+        # 仅暴露 health, info, 和 metrics 端点
+        include: health,info,metrics
+  endpoint:
+    health:
+      # 显示详细健康信息
+      show-details: always
+      # 以树状结构显示健康组件
+      show-components: always
+  health:
+    defaults:
+      # 启用默认健康指标
+      enabled: true
