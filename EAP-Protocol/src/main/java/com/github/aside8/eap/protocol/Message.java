@@ -7,4 +7,6 @@ import java.io.Serializable;
  * A message is a serializable object that can be encoded and decoded.
  */
 public interface Message extends Codec, Traceable, Serializable {
+
+    Protocol getProtocol();
 }
