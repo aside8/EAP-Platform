@@ -301,9 +301,26 @@ public final class SecsDataItem implements SECSII {
         return listItems != null ? Collections.unmodifiableList(listItems) : Collections.emptyList();
     }
 
+    public SECSII get(int index) {
+        List<SECSII> list = getList();
+        if (index < 0 || index >= list.size()) {
+            return null;
+        }
+        return list.get(index);
+    }
+
     public byte[] getBinary() {
         if (formatCode != SecsFormatCode.BINARY) throw new IllegalStateException("Format is " + formatCode);
         return value;
+    }
+
+    @Override
+    public byte getBinary(int index) {
+        byte[] binary = getBinary();
+        if (index < 0 || index >= binary.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + binary.length);
+        }
+        return binary[index];
     }
 
     public boolean[] getBoolean() {
@@ -314,6 +331,15 @@ public final class SecsDataItem implements SECSII {
             result[i] = bb.get() != 0;
         }
         return result;
+    }
+
+    @Override
+    public boolean getBoolean(int index) {
+        boolean[] booleans = getBoolean();
+        if (index < 0 || index >= booleans.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + booleans.length);
+        }
+        return booleans[index];
     }
 
     public String getAscii(Charset charset) {
@@ -337,12 +363,29 @@ public final class SecsDataItem implements SECSII {
         }
         return result;
     }
+    @Override
+    public long getInt8(int index) {
+        long[] int8s = getInt8();
+        if (index < 0 || index >= int8s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + int8s.length);
+        }
+        return int8s[index];
+    }
 
     public byte[] getInt1() {
         if (formatCode != SecsFormatCode.INT1) throw new IllegalStateException("Format is " + formatCode);
         return value;
     }
-    
+
+    @Override
+    public byte getInt1(int index) {
+        byte[] int1s = getInt1();
+        if (index < 0 || index >= int1s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + int1s.length);
+        }
+        return int1s[index];
+    }
+
     public short[] getInt2() {
         if (formatCode != SecsFormatCode.INT2) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
@@ -351,6 +394,15 @@ public final class SecsDataItem implements SECSII {
             result[i] = bb.getShort();
         }
         return result;
+    }
+
+    @Override
+    public short getInt2(int index) {
+        short[] int2s = getInt2();
+        if (index < 0 || index >= int2s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + int2s.length);
+        }
+        return int2s[index];
     }
 
     public int[] getInt4() {
@@ -363,6 +415,15 @@ public final class SecsDataItem implements SECSII {
         return result;
     }
 
+    @Override
+    public int getInt4(int index) {
+        int[] int4s = getInt4();
+        if (index < 0 || index >= int4s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + int4s.length);
+        }
+        return int4s[index];
+    }
+
     public double[] getFloat8() {
         if (formatCode != SecsFormatCode.FLOAT8) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
@@ -371,6 +432,15 @@ public final class SecsDataItem implements SECSII {
             result[i] = bb.getDouble();
         }
         return result;
+    }
+
+    @Override
+    public float getFloat8(int index) {
+        double[] float8s = getFloat8();
+        if (index < 0 || index >= float8s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + float8s.length);
+        }
+        return (float) float8s[index];
     }
 
     public float[] getFloat4() {
@@ -382,10 +452,27 @@ public final class SecsDataItem implements SECSII {
         }
         return result;
     }
+    @Override
+    public float getFloat4(int index) {
+        float[] float4s = getFloat4();
+        if (index < 0 || index >= float4s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + float4s.length);
+        }
+        return float4s[index];
+    }
 
     public long[] getUint8() {
         if (formatCode != SecsFormatCode.UINT8) throw new IllegalStateException("Format is " + formatCode);
         return getInt8(); // Java doesn't have unsigned longs, so treat as signed for retrieval
+    }
+
+    @Override
+    public long getUint8(int index) {
+        long[] uint8s = getUint8();
+        if (index < 0 || index >= uint8s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + uint8s.length);
+        }
+        return uint8s[index];
     }
 
     public short[] getUint1() {
@@ -398,6 +485,15 @@ public final class SecsDataItem implements SECSII {
         return result;
     }
 
+    @Override
+    public short getUint1(int index) {
+        short[] uint1s = getUint1();
+        if (index < 0 || index >= uint1s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + uint1s.length);
+        }
+        return uint1s[index];
+    }
+
     public int[] getUint2() {
         if (formatCode != SecsFormatCode.UINT2) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
@@ -408,6 +504,15 @@ public final class SecsDataItem implements SECSII {
         return result;
     }
 
+    @Override
+    public int getUint2(int index) {
+        int[] uint2s = getUint2();
+        if (index < 0 || index >= uint2s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + uint2s.length);
+        }
+        return uint2s[index];
+    }
+
     public long[] getUint4() {
         if (formatCode != SecsFormatCode.UINT4) throw new IllegalStateException("Format is " + formatCode);
         ByteBuffer bb = getByteBuffer();
@@ -416,6 +521,14 @@ public final class SecsDataItem implements SECSII {
             result[i] = bb.getInt() & 0xFFFFFFFFL;
         }
         return result;
+    }
+    @Override
+    public long getUint4(int index) {
+        long[] uint4s = getUint4();
+        if (index < 0 || index >= uint4s.length) {
+            throw new IndexOutOfBoundsException("Index " + index + " out of bounds for length " + uint4s.length);
+        }
+        return uint4s[index];
     }
 
     @Override
@@ -444,11 +557,9 @@ public final class SecsDataItem implements SECSII {
 
             sb.append("\n");
 
-            if (listItems != null) {
-                for (SECSII item : listItems) {
-                    if (item instanceof SecsDataItem) {
-                        ((SecsDataItem) item).toFormatString(sb, indent + 1);
-                    }
+            for (SECSII item : listItems) {
+                if (item instanceof SecsDataItem) {
+                    ((SecsDataItem) item).toFormatString(sb, indent + 1);
                 }
             }
             sb.append("  ".repeat(Math.max(0, indent)));

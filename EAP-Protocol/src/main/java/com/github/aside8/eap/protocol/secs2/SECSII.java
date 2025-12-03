@@ -3,6 +3,7 @@ package com.github.aside8.eap.protocol.secs2;
 import com.github.aside8.eap.protocol.Codec;
 
 import java.nio.charset.Charset;
+import java.util.List;
 
 /**
  * Interface for all SECS-II message bodies.
@@ -159,4 +160,60 @@ public interface SECSII extends Codec {
     static SECSII uint4(long... values) {
         return SecsDataItem.uint4(values);
     }
+
+    List<SECSII> getList();
+
+    SECSII get(int index);
+
+    byte[] getBinary();
+
+    byte getBinary(int index);
+
+    boolean[] getBoolean();
+
+    boolean getBoolean(int index);
+
+    String getAscii(Charset charset);
+
+    String getAscii();
+
+    long[] getInt8();
+
+    long getInt8(int index);
+
+    byte[] getInt1();
+
+    byte getInt1(int index);
+
+    short[] getInt2();
+
+    short getInt2(int index);
+
+    int[] getInt4();
+
+    int getInt4(int index);
+
+    double[] getFloat8();
+
+    float getFloat8(int index);
+
+    float[] getFloat4();
+
+    float getFloat4(int index);
+
+    long[] getUint8();
+
+    long getUint8(int index);
+
+    short[] getUint1();
+
+    short getUint1(int index);
+
+    int[] getUint2();
+
+    int getUint2(int index);
+
+    long[] getUint4();
+
+    long getUint4(int index);
 }
