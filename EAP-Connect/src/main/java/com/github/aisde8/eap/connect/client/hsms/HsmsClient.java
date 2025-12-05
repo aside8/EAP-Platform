@@ -8,7 +8,6 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.handler.codec.FixedLengthFrameDecoder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
@@ -103,13 +102,22 @@ public class HsmsClient implements EapClient {
         if (!isConnected()) {
             return Mono.error(new IllegalStateException("Not connected"));
         }
-        return Mono.create(sink -> channel.writeAndFlush(message).addListener(f -> {
-            if (f.isSuccess()) {
-                sink.success();
-            } else {
-                sink.error(f.cause());
+        if (!(message instanceof HsmsMessage hsmsMessage)) {
+            return Mono.error(new IllegalArgumentException("Request must be an instance of HsmsMessage"));
+        }
+
+        return Mono.create(sink -> {
+            if (hsmsMessage.isRequest()) {
+                hsmsMessage.setSystemBytes(systemBytesGenerator.incrementAndGet());
             }
-        }));
+            channel.writeAndFlush(hsmsMessage).addListener(f -> {
+                if (f.isSuccess()) {
+                    sink.success();
+                } else {
+                    sink.error(f.cause());
+                }
+            });
+        });
     }
 
     @Override

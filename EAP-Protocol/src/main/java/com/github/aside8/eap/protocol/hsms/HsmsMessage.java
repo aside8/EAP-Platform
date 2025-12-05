@@ -37,6 +37,15 @@ public class HsmsMessage implements Message {
                 .orElseThrow(() -> new IllegalStateException("HSMS header cannot be null."));
     }
 
+    public boolean isRequest() {
+        HsmsMessageType messageType = getMessageType();
+        return (messageType == HsmsMessageType.DATA_MESSAGE && getFunction() % 2 == 1)
+                || messageType == HsmsMessageType.SELECT_REQ
+                || messageType == HsmsMessageType.DESELECT_REQ
+                || messageType == HsmsMessageType.LINKTEST_REQ
+                || messageType == HsmsMessageType.ABORT_REQ;
+    }
+
     public HsmsMessageType getMessageType() {
         return Optional.ofNullable(header)
                 .map(HsmsHeader::getStype)
