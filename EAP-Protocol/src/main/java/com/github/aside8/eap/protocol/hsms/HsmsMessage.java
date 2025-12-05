@@ -64,23 +64,11 @@ public class HsmsMessage implements Message {
             throw new IllegalStateException("HSMS header cannot be null.");
         }
 
-        ByteBuf headerBuf = header.encode(allocator);
-        ByteBuf bodyBuf = null;
-        if (body != null) {
-            bodyBuf = body.encode(allocator);
-        }
-
-        int bodyLength = (bodyBuf != null) ? bodyBuf.readableBytes() : 0;
-        int totalLength = headerBuf.readableBytes() + bodyLength;
-
-        ByteBuf lengthBuf = allocator.buffer(4).writeInt(totalLength);
-        
         CompositeByteBuf compositeBuf = allocator.compositeBuffer();
-        compositeBuf.addComponents(true, lengthBuf, headerBuf);
-        if (bodyBuf != null) {
-            compositeBuf.addComponents(true, bodyBuf);
+        compositeBuf.addComponents(true,  header.encode(allocator));
+        if (body != null) {
+            compositeBuf.addComponents(true, body.encode(allocator));
         }
-        
         return compositeBuf;
     }
 
@@ -99,10 +87,4 @@ public class HsmsMessage implements Message {
     public Protocol getProtocol() {
         return Protocol.HSMS;
     }
-
-    @Override
-    public String getTraceId() {
-        return String.valueOf(getSystemBytes());
-    }
-
 }

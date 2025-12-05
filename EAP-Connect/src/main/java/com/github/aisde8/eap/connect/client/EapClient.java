@@ -7,11 +7,9 @@ import reactor.core.publisher.Mono;
 public interface EapClient {
     /**
      * 异步连接到服务器
-     * @param host 服务器地址
-     * @param port 服务器端口
      * @return a Mono that completes when the connection is established or errors.
      */
-    Mono<Void> connect(String host, int port);
+    Mono<Void> connect();
 
     /**
      * 断开连接
