@@ -29,11 +29,11 @@ public enum HsmsMessageType {
     /**
      * LINKTEST.REQ (pType = 0, sType = 5)
      */
-    LINKTEST_REQ(0, 5),
+    LINK_TEST_REQ(0, 5),
     /**
-     * LINKTEST.RSP (pType = 0, sType = 6)
+     * LINK_TEST.RSP (pType = 0, sType = 6)
      */
-    LINKTEST_RSP(0, 6),
+    LINK_TEST_RSP(0, 6),
     /**
      * ABORT.REQ (pType = 0, sType = 9)
      */

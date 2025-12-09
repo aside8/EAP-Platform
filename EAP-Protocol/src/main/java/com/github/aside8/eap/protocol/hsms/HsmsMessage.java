@@ -42,7 +42,7 @@ public class HsmsMessage implements Message {
         return (messageType == HsmsMessageType.DATA_MESSAGE && getFunction() % 2 == 1)
                 || messageType == HsmsMessageType.SELECT_REQ
                 || messageType == HsmsMessageType.DESELECT_REQ
-                || messageType == HsmsMessageType.LINKTEST_REQ
+                || messageType == HsmsMessageType.LINK_TEST_REQ
                 || messageType == HsmsMessageType.ABORT_REQ;
     }
 
