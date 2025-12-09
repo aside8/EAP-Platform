@@ -1,5 +1,6 @@
 package com.github.aisde8.eap.connect.client.hsms;
 
+import com.github.aisde8.eap.connect.client.EapClientManager;
 import com.github.aside8.eap.protocol.hsms.HsmsHeader;
 import com.github.aside8.eap.protocol.hsms.HsmsMessage;
 import com.github.aside8.eap.protocol.hsms.HsmsMessageType;
@@ -13,7 +14,8 @@ class HsmsClientTest {
     @Test
     @Disabled
     void testConnect() throws InterruptedException {
-        HsmsClient hsmsClient = new HsmsClient(ClientOption.builder().host("172.16.57.40").port(9401).build());
+        EapClientManager eapClientManager = new EapClientManager();
+        HsmsClient hsmsClient = new HsmsClient(ClientOption.builder().host("172.16.57.40").port(9401).build(),  eapClientManager);
         hsmsClient.receive().map(message -> (HsmsMessage) message)
                 .subscribe(message -> System.out.println(message.toString()));
         hsmsClient.connect().block();

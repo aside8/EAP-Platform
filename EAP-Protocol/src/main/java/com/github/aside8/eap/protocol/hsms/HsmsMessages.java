@@ -1,6 +1,32 @@
 package com.github.aside8.eap.protocol.hsms;
 
+import com.github.aside8.eap.protocol.secs2.SECSII;
+
 public class HsmsMessages {
+
+    public static HsmsMessage dataReq(int deviceId, int stream, int function, int systemBytes, SECSII data) {
+        HsmsHeader header = HsmsHeader.builder()
+                .sessionId((short) deviceId)
+                .ptype((byte) HsmsMessageType.DATA_MESSAGE.getPType())
+                .stype((byte) HsmsMessageType.DATA_MESSAGE.getSType())
+                .stream((byte) stream)
+                .function((byte) function)
+                .systemBytes(systemBytes)
+                .build();
+        return new HsmsMessage(header, data);
+    }
+
+    public static HsmsMessage dataRes(HsmsMessage req, SECSII data) {
+        HsmsHeader header = HsmsHeader.builder()
+                .sessionId(req.getHeader().getSessionId())
+                .ptype((byte) HsmsMessageType.DATA_MESSAGE.getPType())
+                .stype((byte) HsmsMessageType.DATA_MESSAGE.getSType())
+                .stream(req.getHeader().getStream())
+                .function((byte) (req.getHeader().getFunction() + 1))
+                .systemBytes(req.getHeader().getSystemBytes())
+                .build();
+        return new HsmsMessage(header, data);
+    }
 
     public static HsmsMessage selectReq(int systemBytes) {
         HsmsHeader header = HsmsHeader.builder()

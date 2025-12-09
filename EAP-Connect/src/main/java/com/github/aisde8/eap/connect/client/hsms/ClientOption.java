@@ -7,10 +7,12 @@ import lombok.Getter;
 @Builder
 public class ClientOption {
 
-    @Builder.Default
-    public int connectTimeoutMillis = 5000;
-
     private String host;
 
     private int port;
+
+    private int deviceId;
+
+    @Builder.Default
+    private TimeConfig timeConfig = new TimeConfig();
 }
