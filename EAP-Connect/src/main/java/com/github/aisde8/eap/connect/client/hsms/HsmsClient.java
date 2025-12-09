@@ -49,12 +49,11 @@ public class HsmsClient implements EapClient {
                     @Override
                     public void initChannel(SocketChannel ch) throws Exception {
                         ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new FixedLength4ByteDecoder());
+                        pipeline.addLast(new LengthField4FrameDecoder());
                         pipeline.addLast(new HsmsMessageDecoder());
 
                         pipeline.addLast(new HsmsMessageEncoder());
-                        pipeline.addLast(new FixedLength4ByteEncoder());
-
+                        pipeline.addLast(new LengthField4FrameEncoder());
                         pipeline.addLast(new HsmsClientLogicHandler(pendingReplies, messageSink));
                     }
                 });
