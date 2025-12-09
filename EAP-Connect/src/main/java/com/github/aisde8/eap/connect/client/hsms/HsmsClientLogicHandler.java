@@ -1,7 +1,9 @@
 package com.github.aisde8.eap.connect.client.hsms;
 
 import com.github.aside8.eap.protocol.Message;
+import com.github.aside8.eap.protocol.hsms.HsmsHeader;
 import com.github.aside8.eap.protocol.hsms.HsmsMessage;
+import com.github.aside8.eap.protocol.hsms.HsmsMessageType;
 import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
