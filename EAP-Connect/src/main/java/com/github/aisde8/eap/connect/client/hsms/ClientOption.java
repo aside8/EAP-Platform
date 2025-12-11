@@ -1,5 +1,6 @@
 package com.github.aisde8.eap.connect.client.hsms;
 
+import io.netty.channel.EventLoopGroup;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -12,6 +13,10 @@ public class ClientOption {
     private int port;
 
     private int deviceId;
+
+    private String clientId;
+
+    private EventLoopGroup eventLoopGroup;
 
     @Builder.Default
     private TimeConfig timeConfig = new TimeConfig();

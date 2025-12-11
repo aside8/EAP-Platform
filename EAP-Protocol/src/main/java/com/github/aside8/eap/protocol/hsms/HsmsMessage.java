@@ -37,13 +37,10 @@ public class HsmsMessage implements Message {
                 .orElseThrow(() -> new IllegalStateException("HSMS header cannot be null."));
     }
 
-    public boolean isRequest() {
-        HsmsMessageType messageType = getMessageType();
-        return (messageType == HsmsMessageType.DATA_MESSAGE && getFunction() % 2 == 1)
-                || messageType == HsmsMessageType.SELECT_REQ
-                || messageType == HsmsMessageType.DESELECT_REQ
-                || messageType == HsmsMessageType.LINK_TEST_REQ
-                || messageType == HsmsMessageType.ABORT_REQ;
+    public String getStreamFunction() {
+        return Optional.ofNullable(header)
+                .map(h -> String.format("S%dF%d", h.getStream(), h.getFunction()))
+                .orElseThrow(() -> new IllegalStateException("HSMS header cannot be null."));
     }
 
     public HsmsMessageType getMessageType() {
@@ -59,13 +56,29 @@ public class HsmsMessage implements Message {
                 .orElse(0);
     }
 
+    public void setDeviceId(int deviceId) {
+        if (header == null) {
+            throw new IllegalStateException("HSMS header cannot be null.");
+        }
+        header.setSessionId((short) deviceId);
+    }
+
     public void setSystemBytes(int systemBytes) {
         if (header == null) {
-            header = new HsmsHeader();
+            throw new IllegalStateException("HSMS header cannot be null.");
         }
         header.setSystemBytes(systemBytes);
     }
 
+    public boolean isRequestMsg() {
+        HsmsMessageType messageType = getMessageType();
+        return (messageType == HsmsMessageType.DATA_MESSAGE && getFunction() % 2 == 1);
+    }
+
+    public boolean isControlMsg() {
+        HsmsMessageType messageType = getMessageType();
+        return messageType != HsmsMessageType.DATA_MESSAGE;
+    }
 
     @Override
     public ByteBuf encode(ByteBufAllocator allocator) {

@@ -4,7 +4,7 @@ import com.github.aside8.eap.protocol.secs2.SECSII;
 
 public class HsmsMessages {
 
-    public static HsmsMessage dataReq(int deviceId, int stream, int function, int systemBytes, SECSII data) {
+    public static HsmsMessage dataReq(int deviceId, boolean wbit, int stream, int function, int systemBytes, SECSII data) {
         HsmsHeader header = HsmsHeader.builder()
                 .sessionId((short) deviceId)
                 .ptype((byte) HsmsMessageType.DATA_MESSAGE.getPType())
@@ -12,6 +12,7 @@ public class HsmsMessages {
                 .stream((byte) stream)
                 .function((byte) function)
                 .systemBytes(systemBytes)
+                .wbit(wbit)
                 .build();
         return new HsmsMessage(header, data);
     }
@@ -24,6 +25,7 @@ public class HsmsMessages {
                 .stream(req.getHeader().getStream())
                 .function((byte) (req.getHeader().getFunction() + 1))
                 .systemBytes(req.getHeader().getSystemBytes())
+                .wbit(false)
                 .build();
         return new HsmsMessage(header, data);
     }
@@ -44,10 +46,11 @@ public class HsmsMessages {
         HsmsHeader header = HsmsHeader.builder()
                 .sessionId(req.getHeader().getSessionId())
                 .ptype((byte) HsmsMessageType.SELECT_RSP.getPType())
-                .stype((byte) HsmsMessageType.SELECT_RSP.getSType())
+                .stype((byte) HsmsMessageType.DATA_MESSAGE.getSType())
                 .stream(selectStatus.getCode())
                 .function((byte) 0x00)
                 .systemBytes(req.getHeader().getSystemBytes())
+                .wbit(false)
                 .build();
         return new HsmsMessage(header, null);
     }

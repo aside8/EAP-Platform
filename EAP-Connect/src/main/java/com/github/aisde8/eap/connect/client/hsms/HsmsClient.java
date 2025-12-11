@@ -6,9 +6,11 @@ import com.github.aside8.eap.protocol.Message;
 import com.github.aside8.eap.protocol.hsms.HsmsMessage;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.util.concurrent.ScheduledFuture;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -16,42 +18,57 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
 import reactor.core.publisher.Sinks;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class HsmsClient implements EapClient {
+
     private static final Logger logger = LoggerFactory.getLogger(HsmsClient.class);
 
     private EventLoopGroup group;
 
     private volatile Channel channel;
 
+    @Getter
     private final ClientOption clientOption;
 
+    @Getter
     private final AtomicInteger systemBytesGenerator = new AtomicInteger(0);
 
+    @Getter
     private final Map<Integer, MonoSink<HsmsMessage>> pendingReplies = new ConcurrentHashMap<>();
 
+    @Getter
     private final Sinks.Many<Message> messageSink = Sinks.many().multicast().onBackpressureBuffer();
 
+    @Getter
+    @Setter
+    private boolean selected;
+
+    @Getter
+    @Setter
+    private ScheduledFuture<?> linkTestFuture;
+
+    @Getter
     private final EapClientManager eapClientManager;
 
     public HsmsClient(ClientOption clientOption, EapClientManager eapClientManager) {
         this.clientOption = clientOption;
         this.eapClientManager = eapClientManager;
+        this.selected = false;
+        this.group = clientOption.getEventLoopGroup();
     }
 
     @Override
     public Mono<Void> connect() {
-        group = new NioEventLoopGroup();
+        group = clientOption.getEventLoopGroup();
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(group)
                 .channel(NioSocketChannel.class)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.SO_KEEPALIVE, true)
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, clientOption.getTimeConfig().getT4() * 1000)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10 * 1000)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     public void initChannel(SocketChannel ch) throws Exception {
@@ -61,7 +78,8 @@ public class HsmsClient implements EapClient {
 
                         pipeline.addLast(new HsmsMessageEncoder());
                         pipeline.addLast(new LengthField4FrameEncoder());
-                        pipeline.addLast(new HsmsClientLogicHandler(pendingReplies, messageSink, systemBytesGenerator));
+                        pipeline.addLast(new HsmsMessageHandler(HsmsClient.this));
+                        pipeline.addLast(new Secs2MessageHandler());
                     }
                 });
 
@@ -69,7 +87,6 @@ public class HsmsClient implements EapClient {
         return Mono.create(sink -> future.addListener((ChannelFutureListener) f -> {
             if (f.isSuccess()) {
                 channel = f.channel();
-                eapClientManager.addClient(clientOption.getHost(), clientOption.getPort(), this);
                 sink.success();
             } else {
                 f.channel().close();
@@ -81,22 +98,14 @@ public class HsmsClient implements EapClient {
     @Override
     public Mono<Void> disconnect() {
         return Mono.create(sink -> {
-            if (group == null) {
-                sink.success();
-                return;
+            if (channel != null) {
+                channel.close();
             }
 
-            eapClientManager.removeClient(clientOption.getHost(), clientOption.getPort());
             pendingReplies.forEach((id, replySink) -> replySink.error(new IllegalStateException("Client Disconnected")));
             pendingReplies.clear();
 
-            group.shutdownGracefully().addListener(future -> {
-                if (future.isSuccess()) {
-                    sink.success();
-                } else {
-                    sink.error(future.cause());
-                }
-            });
+            sink.success();
         });
     }
 
@@ -111,14 +120,19 @@ public class HsmsClient implements EapClient {
         if (!isConnected()) {
             return Mono.error(new IllegalStateException("Not connected"));
         }
+
         if (!(message instanceof HsmsMessage hsmsMessage)) {
             return Mono.error(new IllegalArgumentException("Request must be an instance of HsmsMessage"));
         }
 
-        return Mono.create(sink -> {
-            if (hsmsMessage.isRequest()) {
-                hsmsMessage.setSystemBytes(systemBytesGenerator.incrementAndGet());
+        if (hsmsMessage.isRequestMsg()) {
+            hsmsMessage.setSystemBytes(systemBytesGenerator.get());
+            if (!hsmsMessage.isControlMsg()) {
+                hsmsMessage.setDeviceId(clientOption.getDeviceId());
             }
+        }
+
+        return Mono.create(sink -> {
             channel.writeAndFlush(hsmsMessage).addListener(f -> {
                 if (f.isSuccess()) {
                     sink.success();
@@ -134,6 +148,7 @@ public class HsmsClient implements EapClient {
         if (!isConnected()) {
             return Mono.error(new IllegalStateException("Not connected"));
         }
+
         if (!(request instanceof HsmsMessage hsmsRequest)) {
             return Mono.error(new IllegalArgumentException("Request must be an instance of HsmsMessage"));
         }
@@ -149,7 +164,7 @@ public class HsmsClient implements EapClient {
                     sink.error(future.cause());
                 }
             });
-        }).timeout(Duration.ofMillis(clientOption.getTimeConfig().getT4() * 1000L)).cast(Message.class);
+        }).cast(Message.class);
     }
 
     @Override
