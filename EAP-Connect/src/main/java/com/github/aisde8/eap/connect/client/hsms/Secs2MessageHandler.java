@@ -9,6 +9,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.MonoSink;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -16,6 +17,12 @@ import java.time.format.DateTimeFormatter;
 public class Secs2MessageHandler extends SimpleChannelInboundHandler<HsmsMessage> {
 
     private static final Logger logger = LoggerFactory.getLogger(Secs2MessageHandler.class);
+
+    private HsmsClient hsmsClient;
+
+    public Secs2MessageHandler(HsmsClient hsmsClient) {
+        this.hsmsClient = hsmsClient;
+    }
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, HsmsMessage msg) throws Exception {
@@ -28,8 +35,10 @@ public class Secs2MessageHandler extends SimpleChannelInboundHandler<HsmsMessage
     }
 
     private void onDataMessage(ChannelHandlerContext ctx, HsmsMessage msg) {
-        if (!msg.isRequestMsg()) {
-            logger.warn("Received non-request DATA_MESSAGE, ignoring: {}", msg);
+        int systemBytes = msg.getSystemBytes();
+        MonoSink<HsmsMessage> sink = hsmsClient.getPendingReplies().remove(systemBytes);
+        if (sink != null) {
+            sink.success(msg);
             return;
         }
 
@@ -45,6 +54,7 @@ public class Secs2MessageHandler extends SimpleChannelInboundHandler<HsmsMessage
             case "S10F1", "S10F3", "S10F5" -> onS10FxReq(ctx, msg);
             default -> logger.warn("Unregistered stream function: {}", streamFunction);
         }
+        hsmsClient.getMessageSink().tryEmitNext(msg);
     }
 
     private void onS1F1Req(ChannelHandlerContext ctx, HsmsMessage msg) {

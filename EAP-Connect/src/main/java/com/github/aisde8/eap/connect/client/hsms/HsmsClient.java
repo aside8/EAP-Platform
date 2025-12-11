@@ -79,7 +79,7 @@ public class HsmsClient implements EapClient {
                         pipeline.addLast(new HsmsMessageEncoder());
                         pipeline.addLast(new LengthField4FrameEncoder());
                         pipeline.addLast(new HsmsMessageHandler(HsmsClient.this));
-                        pipeline.addLast(new Secs2MessageHandler());
+                        pipeline.addLast(new Secs2MessageHandler(HsmsClient.this));
                     }
                 });
 

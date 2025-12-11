@@ -1,15 +1,14 @@
 package com.github.aisde8.eap.connect.client.hsms;
 
 import com.github.aside8.eap.protocol.hsms.HsmsMessage;
+import com.github.aside8.eap.protocol.hsms.HsmsMessageType;
 import com.github.aside8.eap.protocol.hsms.HsmsMessages;
 import com.github.aside8.eap.protocol.hsms.SelectStatus;
-import com.github.aside8.eap.protocol.hsms.HsmsMessageType;
 import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.MonoSink;
 
 import java.util.concurrent.TimeUnit;
 
@@ -25,14 +24,6 @@ public class HsmsMessageHandler extends SimpleChannelInboundHandler<HsmsMessage>
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, HsmsMessage msg) throws Exception {
-        int systemBytes = msg.getSystemBytes();
-        MonoSink<HsmsMessage> sink = hsmsClient.getPendingReplies().remove(systemBytes);
-        if (sink != null) {
-            // Found a matching request, complete the Mono
-            sink.success(msg);
-            return;
-        }
-
         // Handle HSMS-specific messages and pass DATA_MESSAGE to the next handler
         switch (msg.getMessageType()) {
             case DATA_MESSAGE:
