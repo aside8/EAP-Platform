@@ -60,6 +60,14 @@ public class HsmsClient implements EapClient {
         this.group = clientOption.getEventLoopGroup();
     }
 
+    public HsmsClient(Channel channel, ClientOption clientOption, EapClientManager eapClientManager) {
+        this.channel = channel;
+        this.clientOption = clientOption;
+        this.eapClientManager = eapClientManager;
+        this.selected = false;
+        this.group = channel.eventLoop();
+    }
+
     @Override
     public Mono<Void> connect() {
         group = clientOption.getEventLoopGroup();
