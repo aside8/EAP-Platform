@@ -1,5 +1,7 @@
 package com.github.aside8.eap.protocol.hsms;
 
+import java.util.Arrays;
+
 /**
  * Enumerates the possible status codes for a Select.rsp message,
  * which are conveyed in the P-Type field of the HSMS header.
@@ -33,5 +35,9 @@ public enum SelectStatus {
 
     public byte getCode() {
         return code;
+    }
+
+    public static SelectStatus valueOf(int code) {
+        return Arrays.stream(SelectStatus.values()).filter(e -> e.code == code).findFirst().orElse(null);
     }
 }

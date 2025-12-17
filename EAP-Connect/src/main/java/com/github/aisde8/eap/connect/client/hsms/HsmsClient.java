@@ -8,7 +8,6 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.util.concurrent.ScheduledFuture;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -47,10 +46,6 @@ public class HsmsClient implements EapClient {
     private boolean selected;
 
     @Getter
-    @Setter
-    private ScheduledFuture<?> linkTestFuture;
-
-    @Getter
     private final EapClientManager eapClientManager;
 
     public HsmsClient(ClientOption clientOption, EapClientManager eapClientManager) {
@@ -81,13 +76,12 @@ public class HsmsClient implements EapClient {
                     @Override
                     public void initChannel(SocketChannel ch) throws Exception {
                         ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast(new LengthField4FrameDecoder());
-                        pipeline.addLast(new HsmsMessageDecoder());
-
-                        pipeline.addLast(new HsmsMessageEncoder());
-                        pipeline.addLast(new LengthField4FrameEncoder());
-                        pipeline.addLast(new HsmsMessageHandler(HsmsClient.this));
-                        pipeline.addLast(new Secs2MessageHandler(HsmsClient.this));
+                        pipeline.addLast("lengthField4FrameDecoder", new LengthField4FrameDecoder());
+                        pipeline.addLast("lengthField4FrameEncoder", new LengthField4FrameEncoder());
+                        pipeline.addLast("hsmsMessageDecoder", new HsmsMessageDecoder());
+                        pipeline.addLast("hsmsMessageEncoder", new HsmsMessageEncoder());
+                        pipeline.addLast("hsmsMessageHandler", new HsmsMessageHandler(HsmsClient.this));
+                        pipeline.addLast("secs2MessageHandler", new Secs2MessageHandler(HsmsClient.this));
                     }
                 });
 
@@ -109,10 +103,8 @@ public class HsmsClient implements EapClient {
             if (channel != null) {
                 channel.close();
             }
-
             pendingReplies.forEach((id, replySink) -> replySink.error(new IllegalStateException("Client Disconnected")));
             pendingReplies.clear();
-
             sink.success();
         });
     }
@@ -133,22 +125,22 @@ public class HsmsClient implements EapClient {
             return Mono.error(new IllegalArgumentException("Request must be an instance of HsmsMessage"));
         }
 
-        if (hsmsMessage.isRequestMsg()) {
-            hsmsMessage.setSystemBytes(systemBytesGenerator.get());
-            if (!hsmsMessage.isControlMsg()) {
-                hsmsMessage.setDeviceId(clientOption.getDeviceId());
-            }
+        if (hsmsMessage.isControlMsg()) {
+            return Mono.error(new IllegalArgumentException("Control message not supported"));
         }
 
-        return Mono.create(sink -> {
-            channel.writeAndFlush(hsmsMessage).addListener(f -> {
-                if (f.isSuccess()) {
-                    sink.success();
-                } else {
-                    sink.error(f.cause());
-                }
-            });
-        });
+        hsmsMessage.setDeviceId(clientOption.getDeviceId());
+        if (hsmsMessage.isRequestMsg()) {
+            hsmsMessage.setSystemBytes(systemBytesGenerator.get());
+        }
+
+        return Mono.create(sink -> channel.writeAndFlush(hsmsMessage).addListener(f -> {
+            if (f.isSuccess()) {
+                sink.success();
+            } else {
+                sink.error(f.cause());
+            }
+        }));
     }
 
     @Override
@@ -159,6 +151,18 @@ public class HsmsClient implements EapClient {
 
         if (!(request instanceof HsmsMessage hsmsRequest)) {
             return Mono.error(new IllegalArgumentException("Request must be an instance of HsmsMessage"));
+        }
+
+        if (hsmsRequest.isControlMsg()) {
+            return Mono.error(new IllegalArgumentException("Control message not supported"));
+        }
+
+        if (!hsmsRequest.isRequestMsg()) {
+            return Mono.error(new IllegalArgumentException("Request must be a request message"));
+        }
+
+        if (hsmsRequest.isDataMsg() && !hsmsRequest.getHeader().isWbit()) {
+            return Mono.error(new IllegalArgumentException("data req message must have W-bit set"));
         }
 
         return Mono.<HsmsMessage>create(sink -> {

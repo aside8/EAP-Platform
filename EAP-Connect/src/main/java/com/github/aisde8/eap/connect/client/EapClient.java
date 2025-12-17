@@ -13,7 +13,6 @@ public interface EapClient {
 
     /**
      * 断开连接
-     * @return a Mono that completes when the disconnection is finished.
      */
     Mono<Void> disconnect();
 

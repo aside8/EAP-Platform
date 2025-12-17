@@ -70,14 +70,17 @@ public class HsmsMessage implements Message {
         header.setSystemBytes(systemBytes);
     }
 
-    public boolean isRequestMsg() {
-        HsmsMessageType messageType = getMessageType();
-        return (messageType == HsmsMessageType.DATA_MESSAGE && getFunction() % 2 == 1);
-    }
-
     public boolean isControlMsg() {
         HsmsMessageType messageType = getMessageType();
         return messageType != HsmsMessageType.DATA_MESSAGE;
+    }
+
+    public boolean isDataMsg() {
+        return !isControlMsg();
+    }
+
+    public boolean isRequestMsg() {
+        return (isDataMsg() && getFunction() % 2 == 1);
     }
 
     @Override
