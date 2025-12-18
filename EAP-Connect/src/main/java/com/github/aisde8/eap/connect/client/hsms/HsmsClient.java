@@ -64,7 +64,7 @@ public class HsmsClient implements EapClient {
     }
 
     @Override
-    public Mono<Void> connect() {
+    public Mono<Boolean> connect() {
         group = clientOption.getEventLoopGroup();
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(group)
@@ -89,7 +89,7 @@ public class HsmsClient implements EapClient {
         return Mono.create(sink -> future.addListener((ChannelFutureListener) f -> {
             if (f.isSuccess()) {
                 channel = f.channel();
-                sink.success();
+                sink.success(true);
             } else {
                 f.channel().close();
                 sink.error(f.cause());
@@ -98,14 +98,14 @@ public class HsmsClient implements EapClient {
     }
 
     @Override
-    public Mono<Void> disconnect() {
+    public Mono<Boolean> disconnect() {
         return Mono.create(sink -> {
             if (channel != null) {
                 channel.close();
             }
             pendingReplies.forEach((id, replySink) -> replySink.error(new IllegalStateException("Client Disconnected")));
             pendingReplies.clear();
-            sink.success();
+            sink.success(true);
         });
     }
 
@@ -116,7 +116,7 @@ public class HsmsClient implements EapClient {
     }
 
     @Override
-    public Mono<Void> send(Message message) {
+    public Mono<Boolean> send(Message message) {
         if (!isConnected()) {
             return Mono.error(new IllegalStateException("Not connected"));
         }
@@ -133,10 +133,10 @@ public class HsmsClient implements EapClient {
         if (hsmsMessage.isRequestMsg()) {
             hsmsMessage.setSystemBytes(systemBytesGenerator.get());
         }
-
-        return Mono.create(sink -> channel.writeAndFlush(hsmsMessage).addListener(f -> {
+        ChannelFuture future = channel.writeAndFlush(hsmsMessage);
+        return Mono.create(sink -> future.addListener(f -> {
             if (f.isSuccess()) {
-                sink.success();
+                sink.success(true);
             } else {
                 sink.error(f.cause());
             }
@@ -165,12 +165,15 @@ public class HsmsClient implements EapClient {
             return Mono.error(new IllegalArgumentException("data req message must have W-bit set"));
         }
 
+        int systemBytes = systemBytesGenerator.incrementAndGet();
+        hsmsRequest.setDeviceId(clientOption.getDeviceId());
+        hsmsRequest.setSystemBytes(systemBytes);
+        ChannelFuture requestFuture = channel.writeAndFlush(hsmsRequest);
+
         return Mono.<HsmsMessage>create(sink -> {
-            int systemBytes = systemBytesGenerator.incrementAndGet();
-            hsmsRequest.setSystemBytes(systemBytes);
-            sink.onDispose(() -> pendingReplies.remove(systemBytes));
             pendingReplies.put(systemBytes, sink);
-            channel.writeAndFlush(hsmsRequest).addListener(future -> {
+            sink.onDispose(() -> pendingReplies.remove(systemBytes));
+            requestFuture.addListener(future -> {
                 if (!future.isSuccess()) {
                     pendingReplies.remove(systemBytes);
                     sink.error(future.cause());

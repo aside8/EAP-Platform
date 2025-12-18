@@ -9,12 +9,12 @@ public interface EapClient {
      * 异步连接到服务器
      * @return a Mono that completes when the connection is established or errors.
      */
-    Mono<Void> connect();
+    Mono<Boolean> connect();
 
     /**
      * 断开连接
      */
-    Mono<Void> disconnect();
+    Mono<Boolean> disconnect();
 
     /**
      * 接收消息
@@ -27,7 +27,7 @@ public interface EapClient {
      * @param message 消息对象
      * @return a Mono that completes when the message has been sent (flushed) or errors.
      */
-    Mono<Void> send(Message message);
+    Mono<Boolean> send(Message message);
 
     /**
      * 发送一个请求并等待一个响应 (Request-Response)
