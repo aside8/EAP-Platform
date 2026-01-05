@@ -1,6 +1,9 @@
 package com.github.aisde8.eap.connect.client.hsms;
 
 import com.github.aside8.eap.protocol.hsms.*;
+import com.github.aside8.eap.protocol.hsms.enums.DeselectStatus;
+import com.github.aside8.eap.protocol.hsms.enums.HsmsMessageType;
+import com.github.aside8.eap.protocol.hsms.enums.SelectStatus;
 import io.netty.channel.ChannelException;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;

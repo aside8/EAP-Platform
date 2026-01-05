@@ -27,6 +27,8 @@
         <maven.compiler.source>19</maven.compiler.source>
         <maven.compiler.target>19</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <reactor-bom.version>2025.0.0-RC1</reactor-bom.version>
+        <netty.version>4.1.130.Final</netty.version>
     </properties>
 
     <dependencyManagement>

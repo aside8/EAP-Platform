@@ -4,7 +4,7 @@ import com.github.aside8.eap.protocol.hsms.HsmsMessage;
 import com.github.aside8.eap.protocol.hsms.HsmsMessages;
 import com.github.aside8.eap.protocol.secs2.SECSII;
 import com.github.aside8.eap.protocol.secs2.Secs2Constants.*;
-import com.github.aside8.eap.protocol.hsms.HsmsMessageType;
+import com.github.aside8.eap.protocol.hsms.enums.HsmsMessageType;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;

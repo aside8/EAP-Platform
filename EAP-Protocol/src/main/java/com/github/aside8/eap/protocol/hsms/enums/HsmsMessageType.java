@@ -1,4 +1,4 @@
-package com.github.aside8.eap.protocol.hsms;
+package com.github.aside8.eap.protocol.hsms.enums;
 
 import java.util.Arrays;
 import java.util.Map;

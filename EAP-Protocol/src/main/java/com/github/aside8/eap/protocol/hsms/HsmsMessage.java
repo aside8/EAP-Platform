@@ -2,6 +2,7 @@ package com.github.aside8.eap.protocol.hsms;
 
 import com.github.aside8.eap.protocol.Message;
 import com.github.aside8.eap.protocol.Protocol;
+import com.github.aside8.eap.protocol.hsms.enums.HsmsMessageType;
 import com.github.aside8.eap.protocol.secs2.SECSII;
 import com.github.aside8.eap.protocol.secs2.SecsDataItem;
 import io.netty.buffer.ByteBuf;

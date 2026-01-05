@@ -1,5 +1,8 @@
 package com.github.aside8.eap.protocol.hsms;
 
+import com.github.aside8.eap.protocol.hsms.enums.DeselectStatus;
+import com.github.aside8.eap.protocol.hsms.enums.HsmsMessageType;
+import com.github.aside8.eap.protocol.hsms.enums.SelectStatus;
 import com.github.aside8.eap.protocol.secs2.SECSII;
 
 public class HsmsMessages {

@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
 import reactor.core.publisher.Sinks;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -66,15 +67,15 @@ public class HsmsClient implements EapClient {
     @Override
     public Mono<Boolean> connect() {
         group = clientOption.getEventLoopGroup();
-        Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(group)
+        Bootstrap bootstrap = new Bootstrap()
+                .group(group)
                 .channel(NioSocketChannel.class)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10 * 1000)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
-                    public void initChannel(SocketChannel ch) throws Exception {
+                    public void initChannel(SocketChannel ch) {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast("lengthField4FrameDecoder", new LengthField4FrameDecoder());
                         pipeline.addLast("lengthField4FrameEncoder", new LengthField4FrameEncoder());
@@ -133,14 +134,16 @@ public class HsmsClient implements EapClient {
         if (hsmsMessage.isRequestMsg()) {
             hsmsMessage.setSystemBytes(systemBytesGenerator.get());
         }
-        ChannelFuture future = channel.writeAndFlush(hsmsMessage);
-        return Mono.create(sink -> future.addListener(f -> {
-            if (f.isSuccess()) {
-                sink.success(true);
-            } else {
-                sink.error(f.cause());
-            }
-        }));
+        return Mono.<Boolean>create(sink -> {
+            ChannelFuture future = channel.writeAndFlush(hsmsMessage);
+            future.addListener(f -> {
+                if (f.isSuccess()) {
+                    sink.success(true);
+                } else {
+                    sink.error(f.cause());
+                }
+            });
+        }).timeout(Duration.ofSeconds(5));
     }
 
     @Override
@@ -168,18 +171,17 @@ public class HsmsClient implements EapClient {
         int systemBytes = systemBytesGenerator.incrementAndGet();
         hsmsRequest.setDeviceId(clientOption.getDeviceId());
         hsmsRequest.setSystemBytes(systemBytes);
-        ChannelFuture requestFuture = channel.writeAndFlush(hsmsRequest);
 
         return Mono.<HsmsMessage>create(sink -> {
             pendingReplies.put(systemBytes, sink);
             sink.onDispose(() -> pendingReplies.remove(systemBytes));
-            requestFuture.addListener(future -> {
+            channel.writeAndFlush(hsmsRequest).addListener(future -> {
                 if (!future.isSuccess()) {
                     pendingReplies.remove(systemBytes);
                     sink.error(future.cause());
                 }
             });
-        }).cast(Message.class);
+        }).timeout(Duration.ofSeconds(5)).cast(Message.class);
     }
 
     @Override
