@@ -30,6 +30,23 @@ class SecsDataItemTest {
     }
 
     @Test
+    void uint8_roundtrip_and_access() {
+        ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
+        SecsDataItem u8 = SecsDataItem.uint8(1L, 2L, 3L);
+        long[] vals = u8.getUint8();
+        assertArrayEquals(new long[]{1L, 2L, 3L}, vals);
+
+        ByteBuf enc = u8.encode(allocator);
+        try {
+            SecsDataItem decoded = new SecsDataItem();
+            decoded.decode(enc);
+            assertArrayEquals(u8.getUint8(), decoded.getUint8());
+        } finally {
+            enc.release();
+        }
+    }
+
+    @Test
     void testToString() {
         SecsDataItem nestedItem = SecsDataItem.list(
                 SecsDataItem.ascii("2025060316400217"),
@@ -95,5 +112,53 @@ class SecsDataItemTest {
         assertEquals((short) 1, properties.get(1).get(1).getUint1(0));
         assertEquals("12B1111", properties.get(1).get(2).getAscii());
         System.out.println(hsmsMessage.getBody().toString());
+    }
+
+    @Test
+    void zeroLengthItem_usesMinimalLengthEncoding_and_roundtrips() {
+        ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
+        SecsDataItem emptyBin = SecsDataItem.binary(new byte[0]);
+        ByteBuf encoded = emptyBin.encode(allocator);
+        // format byte present and low two bits == 0 (minimal encoding)
+        byte format = encoded.getByte(0);
+        assertEquals(0, format & 0x03);
+
+        SecsDataItem decoded = new SecsDataItem();
+        decoded.decode(encoded);
+        assertArrayEquals(new byte[0], decoded.getBinary());
+
+        // also test empty LIST minimal encoding
+        SecsDataItem emptyList = SecsDataItem.list();
+        ByteBuf listEncoded = emptyList.encode(allocator);
+        assertEquals(0, listEncoded.getByte(0) & 0x03);
+        SecsDataItem decodedList = new SecsDataItem();
+        decodedList.decode(listEncoded);
+        assertEquals(0, decodedList.getList().size());
+    }
+
+    @Test
+    void decode_truncatedData_throws() {
+        ByteBuf buf = ByteBufAllocator.DEFAULT.buffer();
+        // ASCII with length=4 but only 2 bytes provided
+        buf.writeByte((byte) (SecsFormatCode.ASCII.getValue() | 1));
+        buf.writeByte(4);
+        buf.writeByte('A');
+        buf.writeByte('B');
+        SecsDataItem item = new SecsDataItem();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> item.decode(buf));
+        assertTrue(ex.getMessage().contains("Truncated"));
+    }
+
+    @Test
+    void decode_fixedSizeLength_mustBeMultipleOfElementSize() {
+        ByteBuf buf = ByteBufAllocator.DEFAULT.buffer();
+        // I4 with length=3 (invalid)
+        buf.writeByte((byte) (SecsFormatCode.INT4.getValue() | 1));
+        buf.writeByte(3);
+        buf.writeByte(0);
+        buf.writeByte(1);
+        SecsDataItem item = new SecsDataItem();
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> item.decode(buf));
+        assertTrue(ex.getMessage().contains("not a multiple of element size"));
     }
 }

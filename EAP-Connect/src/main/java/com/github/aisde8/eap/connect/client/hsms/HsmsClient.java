@@ -97,8 +97,9 @@ public class HsmsClient implements EapClient {
                     @Override
                     public void initChannel(SocketChannel ch) {
                         ChannelPipeline pipeline = ch.pipeline();
-                        pipeline.addLast("lengthField4FrameDecoder", new LengthField4FrameDecoder());
-                        pipeline.addLast("lengthField4FrameEncoder", new LengthField4FrameEncoder());
+                        // framing should be configurable because some peers include the 4-byte length in the length field
+                        pipeline.addLast("lengthField4FrameDecoder", new LengthField4FrameDecoder(clientOption.isIncludeLength()));
+                        pipeline.addLast("lengthField4FrameEncoder", new LengthField4FrameEncoder(clientOption.isIncludeLength()));
                         pipeline.addLast("hsmsMessageDecoder", new HsmsMessageDecoder());
                         pipeline.addLast("hsmsMessageEncoder", new HsmsMessageEncoder());
                         pipeline.addLast("hsmsMessageHandler", new HsmsMessageHandler(HsmsClient.this));

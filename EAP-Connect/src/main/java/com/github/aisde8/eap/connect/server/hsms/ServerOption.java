@@ -11,4 +11,10 @@ public class ServerOption {
     private int port;
 
     private EventLoopGroup eventLoopGroup;
-}
+
+    /**
+     * HSMS framing: whether the 4-byte length field includes the length field itself.
+     * Default: false (legacy behaviour).
+     */
+    private boolean includeLength = false;
+} 

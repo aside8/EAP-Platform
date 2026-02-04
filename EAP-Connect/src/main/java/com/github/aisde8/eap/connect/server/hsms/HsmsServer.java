@@ -62,6 +62,7 @@ public class HsmsServer implements EapServer {
                                 .port(port)
                                 .deviceId(0) // Default deviceId, should be updated after select.req
                                 .eventLoopGroup(workerGroup)
+                                .includeLength(option.isIncludeLength())
                                 .build();
 
                         HsmsClient hsmsClient = new HsmsClient(ch, clientOption, eapClientManager);
@@ -69,10 +70,11 @@ public class HsmsServer implements EapServer {
                         eapClientManager.addClient(host, port, hsmsClient);
                         clientSink.tryEmitNext(hsmsClient);
 
-                        ch.pipeline().addLast(new LengthField4FrameDecoder());
+                        // Framing is configurable because some peers include the 4-byte length in the length field
+                        ch.pipeline().addLast(new LengthField4FrameDecoder(option.isIncludeLength()));
                         ch.pipeline().addLast(new HsmsMessageDecoder());
                         ch.pipeline().addLast(new HsmsMessageEncoder());
-                        ch.pipeline().addLast(new LengthField4FrameEncoder());
+                        ch.pipeline().addLast(new LengthField4FrameEncoder(option.isIncludeLength()));
                         ch.pipeline().addLast(new HsmsMessageHandler(hsmsClient));
                         ch.pipeline().addLast(new Secs2MessageHandler(hsmsClient));
                     }

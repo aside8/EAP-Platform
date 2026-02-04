@@ -20,3 +20,7 @@ management:
     defaults:
       # 启用默认健康指标
       enabled: true
+
+# HSMS framing: whether the 4-byte length field includes the 4 bytes of the length field itself.
+# Default: false (legacy behaviour). Set to true for equipment/vendors that include the length-field.
+# eap.connect.hsms.server.include-length: true

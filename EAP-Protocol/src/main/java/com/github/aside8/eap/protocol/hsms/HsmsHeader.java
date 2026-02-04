@@ -29,6 +29,10 @@ public class HsmsHeader implements Codec {
 
     @Override
     public ByteBuf encode(ByteBufAllocator allocator) {
+        // Validate field ranges to avoid producing non-conformant headers
+        if ((stream & ~STREAM_MASK) != 0) {
+            throw new IllegalArgumentException("stream must be a 7-bit value (0..127): " + (stream & 0xFF));
+        }
         ByteBuf buf = allocator.buffer(HEADER_SIZE_BYTES);
         buf.writeShort(sessionId);
         buf.writeByte(stream);

@@ -20,4 +20,11 @@ public class ClientOption {
 
     @Builder.Default
     private TimeConfig timeConfig = new TimeConfig();
+
+    /**
+     * HSMS framing: whether the 4-byte length field includes the length of the length field itself.
+     * Default: false (legacy behaviour).
+     */
+    @Builder.Default
+    private boolean includeLength = false;
 }
