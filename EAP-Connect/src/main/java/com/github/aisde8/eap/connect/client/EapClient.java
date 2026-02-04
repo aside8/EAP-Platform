@@ -4,41 +4,105 @@ import com.github.aside8.eap.protocol.Message;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-public interface EapClient {
-    /**
-     * 异步连接到服务器
-     * @return a Mono that completes when the connection is established or errors.
-     */
-    Mono<Boolean> connect();
+import java.time.Duration;
+
+/**
+ * Redesigned client API with clearer semantics and richer metadata.
+ *
+ * - New methods express intent (Mono<Void> for completion vs Boolean ambiguous success flag).
+ * - Backward-compatible adapters are provided and marked {@code @Deprecated} so existing callers keep working.
+ */
+public interface EapClient extends AutoCloseable {
+
+    Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+
+    /* ---------- New, preferred API ---------- */
 
     /**
-     * 断开连接
+     * Connect to remote peer. Completes when the connection is established.
+     * Errors if connection cannot be established within the provided timeout (if honored by implementation).
      */
-    Mono<Boolean> disconnect();
+    Mono<Void> connect(Duration timeout);
 
     /**
-     * 接收消息
-     * @return a flux of incoming messages.
+     * Disconnect and release resources. Completes when graceful shutdown finishes.
+     * Implementations may honor the provided timeout.
      */
-    Flux<Message> receive();
+    Mono<Void> disconnect(Duration timeout);
 
     /**
-     * 发送一个消息后不等待响应 (Fire-and-Forget)
-     * @param message 消息对象
-     * @return a Mono that completes when the message has been sent (flushed) or errors.
+     * Hot stream of lifecycle events (CONNECTED / DISCONNECTED / ERROR).
+     * Implementations must not complete this Flux under normal operation.
      */
-    Mono<Boolean> send(Message message);
+    Flux<ConnectionEvent> connectionEvents();
 
     /**
-     * 发送一个请求并等待一个响应 (Request-Response)
-     * @param request The request message.
-     * @return A Mono that will complete with the corresponding reply message.
+     * Hot inbound message stream that includes transport/protocol metadata.
      */
-    Mono<Message> sendRequest(Message request);
+    Flux<InboundMessage> receiveWithMeta();
 
     /**
-     * 客户端是否处于连接状态
-     * @return true 如果已连接
+     * Fire-and-forget send. Completion means the message was written/flushed to the transport.
+     */
+    Mono<Void> sendVoid(Message message);
+
+    /**
+     * Request/response with explicit timeout and reply metadata.
+     */
+    Mono<Reply<Message>> sendRequest(Message request, Duration timeout);
+
+    /**
+     * Instant snapshot of connection state. Prefer subscribing to {@link #connectionEvents()} for reliable state transitions.
      */
     boolean isConnected();
+
+    /* ---------- Backward-compatible adapters (deprecated) ---------- */
+
+    /**
+     * @deprecated use {@link #connect(Duration)}
+     */
+    @Deprecated
+    default Mono<Boolean> connect() {
+        return connect(DEFAULT_TIMEOUT).thenReturn(Boolean.TRUE);
+    }
+
+    /**
+     * @deprecated use {@link #disconnect(Duration)}
+     */
+    @Deprecated
+    default Mono<Boolean> disconnect() {
+        return disconnect(DEFAULT_TIMEOUT).thenReturn(Boolean.TRUE);
+    }
+
+    /**
+     * @deprecated use {@link #receiveWithMeta()} and map to payload
+     */
+    @Deprecated
+    default Flux<Message> receive() {
+        return receiveWithMeta().map(InboundMessage::getPayload);
+    }
+
+    /**
+     * @deprecated use {@link #sendVoid(Message)}
+     */
+    @Deprecated
+    default Mono<Boolean> send(Message message) {
+        return sendVoid(message).thenReturn(Boolean.TRUE);
+    }
+
+    /**
+     * @deprecated use {@link #sendRequest(Message, Duration)}
+     */
+    @Deprecated
+    default Mono<Message> sendRequest(Message request) {
+        return sendRequest(request, DEFAULT_TIMEOUT).map(Reply::getPayload);
+    }
+
+    /**
+     * Close is equivalent to {@link #disconnect()} and is provided for try-with-resources compatibility.
+     */
+    @Override
+    default void close() {
+        disconnect().block();
+    }
 }

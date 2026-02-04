@@ -9,7 +9,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.MonoSink;
+import reactor.core.publisher.Sinks;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -36,9 +36,12 @@ public class Secs2MessageHandler extends SimpleChannelInboundHandler<HsmsMessage
 
     private void onDataMessage(ChannelHandlerContext ctx, HsmsMessage msg) {
         int systemBytes = msg.getSystemBytes();
-        MonoSink<HsmsMessage> sink = hsmsClient.getPendingReplies().remove(systemBytes);
+        Sinks.One<HsmsMessage> sink = hsmsClient.getPendingReplies().remove(systemBytes);
         if (sink != null) {
-            sink.success(msg);
+            var result = sink.tryEmitValue(msg);
+            if (result.isFailure()) {
+                logger.debug("reply sink emission failed for {}: {}", systemBytes, result);
+            }
             return;
         }
 

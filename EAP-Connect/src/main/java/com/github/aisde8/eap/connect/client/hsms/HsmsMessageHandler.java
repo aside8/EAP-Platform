@@ -21,6 +21,8 @@ public class HsmsMessageHandler extends SimpleChannelInboundHandler<HsmsMessage>
 
     private ScheduledFuture<?> linkTestFuture;
 
+    private ScheduledFuture<?> selectRespTimeoutFuture;
+
     public HsmsMessageHandler(HsmsClient hsmsClient) {
         this.hsmsClient = hsmsClient;
     }
@@ -56,6 +58,15 @@ public class HsmsMessageHandler extends SimpleChannelInboundHandler<HsmsMessage>
         var generator = hsmsClient.getSystemBytesGenerator();
         ctx.writeAndFlush(HsmsMessages.selectReq(hsmsClient.getClientOption().getDeviceId(), generator.incrementAndGet()));
 
+        // Start a timer to check if SELECT_RSP is received within timeout (default 5 seconds)
+        this.selectRespTimeoutFuture = ctx.executor().schedule(() -> {
+            if (!hsmsClient.isSelected()) {
+                logger.warn("SELECT_RSP timeout: {} -> {}, closing connection", 
+                    ctx.channel().localAddress(), ctx.channel().remoteAddress());
+                ctx.close();
+            }
+        }, 5, TimeUnit.SECONDS);
+
         // Start a timer to send LINK_TEST_REQ messages every 10 seconds
         this.linkTestFuture = ctx.executor().scheduleAtFixedRate(() ->
                 ctx.writeAndFlush(HsmsMessages.linkTestReq(generator.incrementAndGet())), 10, 10, TimeUnit.SECONDS);
@@ -67,13 +78,16 @@ public class HsmsMessageHandler extends SimpleChannelInboundHandler<HsmsMessage>
         logger.info("HSMS Channel Inactive: {} -> {}", ctx.channel().localAddress(), ctx.channel().remoteAddress());
         hsmsClient.setSelected(false);
 
-        // Cancel the timer
+        // Cancel the timers
         if (linkTestFuture != null) {
             linkTestFuture.cancel(false);
         }
+        if (selectRespTimeoutFuture != null) {
+            selectRespTimeoutFuture.cancel(false);
+        }
 
-        // All pending Monos should fail when the connection is lost
-        hsmsClient.getPendingReplies().forEach((id, sink) -> sink.error(new ChannelException("Channel disconnected unexpectedly.")));
+        // All pending replies should fail when the connection is lost
+        hsmsClient.getPendingReplies().forEach((id, sink) -> sink.tryEmitError(new ChannelException("Channel disconnected unexpectedly.")));
         hsmsClient.getPendingReplies().clear();
 
         hsmsClient.getEapClientManager().removeClient(hsmsClient.getClientOption().getHost(), hsmsClient.getClientOption().getPort());
@@ -85,8 +99,16 @@ public class HsmsMessageHandler extends SimpleChannelInboundHandler<HsmsMessage>
         logger.error("HSMS Client Handler caught exception: {}", cause.getMessage(), cause);
         hsmsClient.setSelected(false);
 
-        // All pending Monos should fail on exception
-        hsmsClient.getPendingReplies().forEach((id, sink) -> sink.error(cause));
+        // Cancel the timers
+        if (linkTestFuture != null) {
+            linkTestFuture.cancel(false);
+        }
+        if (selectRespTimeoutFuture != null) {
+            selectRespTimeoutFuture.cancel(false);
+        }
+
+        // All pending replies should fail on exception
+        hsmsClient.getPendingReplies().forEach((id, sink) -> sink.tryEmitError(cause));
         hsmsClient.getPendingReplies().clear();
         ctx.close();
     }
@@ -105,6 +127,12 @@ public class HsmsMessageHandler extends SimpleChannelInboundHandler<HsmsMessage>
     }
 
     private void onSelectRsp(ChannelHandlerContext ctx, HsmsMessage msg) {
+        // Cancel the SELECT_RSP timeout timer since we received the response
+        if (selectRespTimeoutFuture != null) {
+            selectRespTimeoutFuture.cancel(false);
+            selectRespTimeoutFuture = null;
+        }
+
         HsmsHeader header = msg.getHeader();
         SelectStatus selectStatus = SelectStatus.valueOf(header.getFunction());
         if (selectStatus == SelectStatus.CONNECTION_ESTABLISHED || selectStatus == SelectStatus.ALREADY_SELECTED) {

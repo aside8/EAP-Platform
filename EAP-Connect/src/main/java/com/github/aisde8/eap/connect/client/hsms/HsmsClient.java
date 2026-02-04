@@ -1,23 +1,26 @@
 package com.github.aisde8.eap.connect.client.hsms;
 
+import com.github.aisde8.eap.connect.client.ConnectionEvent;
 import com.github.aisde8.eap.connect.client.EapClient;
 import com.github.aisde8.eap.connect.client.EapClientManager;
+import com.github.aisde8.eap.connect.client.InboundMessage;
 import com.github.aside8.eap.protocol.Message;
 import com.github.aside8.eap.protocol.hsms.HsmsMessage;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.channel.nio.NioEventLoopGroup;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.publisher.MonoSink;
 import reactor.core.publisher.Sinks;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,10 +40,12 @@ public class HsmsClient implements EapClient {
     private final AtomicInteger systemBytesGenerator = new AtomicInteger(0);
 
     @Getter
-    private final Map<Integer, MonoSink<HsmsMessage>> pendingReplies = new ConcurrentHashMap<>();
+    private final Map<Integer, Sinks.One<HsmsMessage>> pendingReplies = new ConcurrentHashMap<>();
 
     @Getter
-    private final Sinks.Many<Message> messageSink = Sinks.many().multicast().onBackpressureBuffer();
+    private final Sinks.Many<Message> messageSink = Sinks.many().multicast().onBackpressureBuffer(1024, false);
+
+    private final Sinks.Many<ConnectionEvent> connectionEventSink = Sinks.many().multicast().onBackpressureBuffer(16, false);
 
     @Getter
     @Setter
@@ -49,11 +54,21 @@ public class HsmsClient implements EapClient {
     @Getter
     private final EapClientManager eapClientManager;
 
+    private final boolean ownsEventLoopGroup;
+
     public HsmsClient(ClientOption clientOption, EapClientManager eapClientManager) {
         this.clientOption = clientOption;
         this.eapClientManager = eapClientManager;
         this.selected = false;
-        this.group = clientOption.getEventLoopGroup();
+
+        EventLoopGroup provided = clientOption.getEventLoopGroup();
+        if (provided == null) {
+            this.group = new NioEventLoopGroup();
+            this.ownsEventLoopGroup = true;
+        } else {
+            this.group = provided;
+            this.ownsEventLoopGroup = false;
+        }
     }
 
     public HsmsClient(Channel channel, ClientOption clientOption, EapClientManager eapClientManager) {
@@ -62,17 +77,22 @@ public class HsmsClient implements EapClient {
         this.eapClientManager = eapClientManager;
         this.selected = false;
         this.group = channel.eventLoop();
+        this.ownsEventLoopGroup = false;
     }
 
     @Override
     public Mono<Boolean> connect() {
-        group = clientOption.getEventLoopGroup();
+        return connect(DEFAULT_TIMEOUT).thenReturn(Boolean.TRUE);
+    }
+
+    @Override
+    public Mono<Void> connect(Duration timeout) {
         Bootstrap bootstrap = new Bootstrap()
                 .group(group)
                 .channel(NioSocketChannel.class)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.SO_KEEPALIVE, true)
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10 * 1000)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) Math.min(timeout.toMillis(), Integer.MAX_VALUE))
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     public void initChannel(SocketChannel ch) {
@@ -87,33 +107,66 @@ public class HsmsClient implements EapClient {
                 });
 
         ChannelFuture future = bootstrap.connect(clientOption.getHost(), clientOption.getPort());
-        return Mono.create(sink -> future.addListener((ChannelFutureListener) f -> {
+        return Mono.<Void>create(sink -> future.addListener((ChannelFutureListener) f -> {
             if (f.isSuccess()) {
                 channel = f.channel();
-                sink.success(true);
+                connectionEventSink.tryEmitNext(ConnectionEvent.connected());
+                sink.success();
             } else {
-                f.channel().close();
+                if (f.channel() != null) f.channel().close();
+                connectionEventSink.tryEmitNext(ConnectionEvent.error(f.cause()));
                 sink.error(f.cause());
             }
-        }));
+        })).timeout(timeout);
     }
 
     @Override
     public Mono<Boolean> disconnect() {
-        return Mono.create(sink -> {
-            if (channel != null) {
-                channel.close();
+        return disconnect(DEFAULT_TIMEOUT).thenReturn(Boolean.TRUE);
+    }
+
+    @Override
+    public Mono<Void> disconnect(Duration timeout) {
+        return Mono.<Void>create(sink -> {
+            Channel ch = channel;
+            if (ch != null) {
+                ch.close().addListener((ChannelFutureListener) f -> {
+                    pendingReplies.forEach((id, replySink) -> replySink.tryEmitError(new IllegalStateException("Client Disconnected")));
+                    pendingReplies.clear();
+                    if (ownsEventLoopGroup) {
+                        group.shutdownGracefully().addListener(gf -> connectionEventSink.tryEmitNext(ConnectionEvent.disconnected()));
+                    } else {
+                        connectionEventSink.tryEmitNext(ConnectionEvent.disconnected());
+                    }
+                    sink.success();
+                });
+            } else {
+                if (ownsEventLoopGroup && group != null) {
+                    group.shutdownGracefully().addListener(gf -> connectionEventSink.tryEmitNext(ConnectionEvent.disconnected()));
+                } else {
+                    connectionEventSink.tryEmitNext(ConnectionEvent.disconnected());
+                }
+                pendingReplies.forEach((id, replySink) -> replySink.tryEmitError(new IllegalStateException("Client Disconnected")));
+                pendingReplies.clear();
+                sink.success();
             }
-            pendingReplies.forEach((id, replySink) -> replySink.error(new IllegalStateException("Client Disconnected")));
-            pendingReplies.clear();
-            sink.success(true);
-        });
+        }).timeout(timeout);
+    }
+
+    @Override
+    public Flux<ConnectionEvent> connectionEvents() {
+        return connectionEventSink.asFlux();
     }
 
 
     @Override
     public Flux<Message> receive() {
-        return messageSink.asFlux();
+        return receiveWithMeta().map(InboundMessage::getPayload);
+    }
+
+    @Override
+    public Flux<InboundMessage> receiveWithMeta() {
+        return messageSink.asFlux().map(m -> new InboundMessage(m, Instant.now(), Map.of()));
     }
 
     @Override
@@ -132,7 +185,8 @@ public class HsmsClient implements EapClient {
 
         hsmsMessage.setDeviceId(clientOption.getDeviceId());
         if (hsmsMessage.isRequestMsg()) {
-            hsmsMessage.setSystemBytes(systemBytesGenerator.get());
+            // FIX: increment system bytes for each request
+            hsmsMessage.setSystemBytes(systemBytesGenerator.incrementAndGet());
         }
         return Mono.<Boolean>create(sink -> {
             ChannelFuture future = channel.writeAndFlush(hsmsMessage);
@@ -147,41 +201,41 @@ public class HsmsClient implements EapClient {
     }
 
     @Override
+    public Mono<Void> sendVoid(Message message) {
+        return send(message).then();
+    }
+
+    @Override
     public Mono<Message> sendRequest(Message request) {
-        if (!isConnected()) {
-            return Mono.error(new IllegalStateException("Not connected"));
-        }
+        return sendRequest(request, Duration.ofSeconds(5)).map(com.github.aisde8.eap.connect.client.Reply::getPayload);
+    }
 
-        if (!(request instanceof HsmsMessage hsmsRequest)) {
-            return Mono.error(new IllegalArgumentException("Request must be an instance of HsmsMessage"));
-        }
-
-        if (hsmsRequest.isControlMsg()) {
-            return Mono.error(new IllegalArgumentException("Control message not supported"));
-        }
-
-        if (!hsmsRequest.isRequestMsg()) {
-            return Mono.error(new IllegalArgumentException("Request must be a request message"));
-        }
-
-        if (hsmsRequest.isDataMsg() && !hsmsRequest.getHeader().isWbit()) {
-            return Mono.error(new IllegalArgumentException("data req message must have W-bit set"));
-        }
+    @Override
+    public Mono<com.github.aisde8.eap.connect.client.Reply<Message>> sendRequest(Message request, Duration timeout) {
+        if (!isConnected()) return Mono.error(new IllegalStateException("Not connected"));
+        if (!(request instanceof HsmsMessage hsmsRequest)) return Mono.error(new IllegalArgumentException("Request must be an instance of HsmsMessage"));
+        if (hsmsRequest.isControlMsg()) return Mono.error(new IllegalArgumentException("Control message not supported"));
+        if (!hsmsRequest.isRequestMsg()) return Mono.error(new IllegalArgumentException("Request must be a request message"));
+        if (hsmsRequest.isDataMsg() && !hsmsRequest.getHeader().isWbit()) return Mono.error(new IllegalArgumentException("data req message must have W-bit set"));
 
         int systemBytes = systemBytesGenerator.incrementAndGet();
         hsmsRequest.setDeviceId(clientOption.getDeviceId());
         hsmsRequest.setSystemBytes(systemBytes);
 
-        return Mono.<HsmsMessage>create(sink -> {
-            pendingReplies.put(systemBytes, sink);
-            sink.onDispose(() -> pendingReplies.remove(systemBytes));
-            channel.writeAndFlush(hsmsRequest).addListener(future -> {
-                if (!future.isSuccess()) {
-                    pendingReplies.remove(systemBytes);
-                    sink.error(future.cause());
-                }
-            });
-        }).timeout(Duration.ofSeconds(5)).cast(Message.class);
+        Sinks.One<HsmsMessage> replySink = Sinks.one();
+        pendingReplies.put(systemBytes, replySink);
+
+        channel.writeAndFlush(hsmsRequest).addListener(future -> {
+            if (!future.isSuccess()) {
+                var removed = pendingReplies.remove(systemBytes);
+                if (removed != null) removed.tryEmitError(future.cause());
+            }
+        });
+
+        return replySink.asMono()
+                .doFinally(sig -> pendingReplies.remove(systemBytes))
+                .timeout(timeout)
+                .map(msg -> new com.github.aisde8.eap.connect.client.Reply<Message>(msg, Duration.ofMillis(0)));
     }
 
     @Override
