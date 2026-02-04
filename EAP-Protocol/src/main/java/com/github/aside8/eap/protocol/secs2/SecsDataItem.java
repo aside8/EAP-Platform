@@ -13,6 +13,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import com.github.aside8.eap.protocol.secs2.sml.SmlPrinter;
+
 public final class SecsDataItem implements SECSII {
     @Getter
     private SecsFormatCode formatCode;
@@ -221,8 +223,11 @@ public final class SecsDataItem implements SECSII {
             length = (value != null) ? value.length : 0;
         }
 
+        // For zero-length items use the minimal encoding (lengthBytes == 0) per SECS-II.
         int lengthBytesIndicator;
-        if (length <= 0xFF) {
+        if (length == 0) {
+            lengthBytesIndicator = 0;
+        } else if (length <= 0xFF) {
             lengthBytesIndicator = 1;
         } else if (length <= 0xFFFF) {
             lengthBytesIndicator = 2;
@@ -232,10 +237,17 @@ public final class SecsDataItem implements SECSII {
             throw new IllegalArgumentException("Data item length " + length + " is too large for SECS-II");
         }
 
+        // Fixed-size formats must be whole multiples of their element size
+        if (formatCode.getSize() > 0 && length % formatCode.getSize() != 0) {
+            throw new IllegalArgumentException(String.format("Length %d is not a multiple of element size %d for format %s",
+                    length, formatCode.getSize(), formatCode));
+        }
+
         ByteBuf headerBuf = allocator.buffer(1 + lengthBytesIndicator);
-        headerBuf.writeByte(formatCode.getValue() | lengthBytesIndicator);
+        headerBuf.writeByte((byte) (formatCode.getValue() | lengthBytesIndicator));
 
         switch (lengthBytesIndicator) {
+            case 0 -> { /* no length bytes */ }
             case 1 -> headerBuf.writeByte(length);
             case 2 -> headerBuf.writeShort(length);
             case 3 -> headerBuf.writeMedium(length);
@@ -256,19 +268,45 @@ public final class SecsDataItem implements SECSII {
         this.formatCode = SecsFormatCode.fromByte(formatByte);
         int lengthBytes = formatByte & 0x03;
 
-        int length = switch (lengthBytes) {
-            case 1 -> in.readUnsignedByte();
-            case 2 -> in.readUnsignedShort();
-            case 3 -> in.readUnsignedMedium();
+        final int length;
+        switch (lengthBytes) {
+            case 0 -> {
+                // Per SECS-II a length-of-length of 0 means length == 0 and no length bytes follow.
+                length = 0;
+            }
+            case 1 -> length = in.readUnsignedByte();
+            case 2 -> length = in.readUnsignedShort();
+            case 3 -> length = in.readUnsignedMedium();
             default -> throw new IllegalArgumentException("Invalid length bytes for data item: " + lengthBytes);
-        };
-        
+        }
+
         this.listItems = null; // Clear previous values
         this.value = null;
 
+        // Defensive checks to avoid DoS / malformed messages
+        if (length < 0) {
+            throw new IllegalArgumentException("Negative length for SECS-II data item: " + length);
+        }
+
+        // Fixed-size formats must have a length that is a multiple of the element size
+        if (formatCode.getSize() > 0 && length % formatCode.getSize() != 0) {
+            throw new IllegalArgumentException(String.format("Length %d is not a multiple of element size %d for format %s",
+                    length, formatCode.getSize(), formatCode));
+        }
+
         if (formatCode == SecsFormatCode.LIST) {
+            // Guard against pathological lists (configurable limits could be exposed later)
+            final int MAX_LIST_ITEMS = 10_000;
+            if (length > MAX_LIST_ITEMS) {
+                throw new IllegalArgumentException("List item count too large: " + length);
+            }
+
             List<SECSII> decodedList = new ArrayList<>();
             for (int i = 0; i < length; i++) {
+                if (!in.isReadable()) {
+                    throw new IllegalArgumentException(String.format("Truncated SECS-II list: expected %d items but stream ended at %d",
+                            length, i));
+                }
                 SecsDataItem item = new SecsDataItem();
                 item.decode(in);
                 decodedList.add(item);
@@ -276,6 +314,10 @@ public final class SecsDataItem implements SECSII {
             this.listItems = decodedList;
 
         } else {
+            if (in.readableBytes() < length) {
+                throw new IllegalArgumentException(String.format("Truncated SECS-II data: expected %d bytes, available %d",
+                        length, in.readableBytes()));
+            }
             this.value = new byte[length];
             in.readBytes(this.value);
         }
@@ -350,8 +392,8 @@ public final class SecsDataItem implements SECSII {
     }
     
     public String getAscii() {
-        // Default to UTF-8 as requested, though US-ASCII is standard.
-        return getAscii(StandardCharsets.UTF_8);
+        // SECS-II specifies ASCII by default.
+        return getAscii(StandardCharsets.US_ASCII);
     }
 
     public long[] getInt8() {
@@ -463,7 +505,13 @@ public final class SecsDataItem implements SECSII {
 
     public long[] getUint8() {
         if (formatCode != SecsFormatCode.UINT8) throw new IllegalStateException("Format is " + formatCode);
-        return getInt8(); // Java doesn't have unsigned longs, so treat as signed for retrieval
+        /* Read 8-byte unsigned values as Java signed longs (bit-preserving). */
+        ByteBuffer bb = getByteBuffer();
+        long[] result = new long[bb.remaining() / formatCode.getSize()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = bb.getLong();
+        }
+        return result;
     }
 
     @Override
@@ -533,94 +581,7 @@ public final class SecsDataItem implements SECSII {
 
     @Override
     public String toString() {
-        return toFormatString();
-    }
-
-    public String toFormatString() {
-        StringBuilder sb = new StringBuilder();
-        toFormatString(sb, 0);
-        return sb.toString();
-    }
-
-    private void toFormatString(StringBuilder sb, int indent) {
-        sb.append("  ".repeat(Math.max(0, indent)));
-        sb.append("<").append(formatCode.getSymbol()).append(" [");
-
-        if (formatCode == SecsFormatCode.LIST) {
-            int size = (listItems != null) ? listItems.size() : 0;
-            sb.append(size).append("]");
-
-            if (size == 0) {
-                sb.append(">\n");
-                return;
-            }
-
-            sb.append("\n");
-
-            for (SECSII item : listItems) {
-                if (item instanceof SecsDataItem) {
-                    ((SecsDataItem) item).toFormatString(sb, indent + 1);
-                }
-            }
-            sb.append("  ".repeat(Math.max(0, indent)));
-            sb.append(">\n");
-
-        } else {
-            int length = (value != null) ? value.length : 0;
-            int size = (formatCode.getSize() > 0 && length > 0) ? length / formatCode.getSize() : length;
-            sb.append(size).append("] ");
-
-            if (value != null) {
-                switch (formatCode) {
-                    case ASCII:
-                        sb.append("\"").append(getAscii()).append("\"");
-                        break;
-                    case INT1:
-                        sb.append(Arrays.toString(getInt1()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case INT2:
-                        sb.append(Arrays.toString(getInt2()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case INT4:
-                        sb.append(Arrays.toString(getInt4()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case INT8:
-                        sb.append(Arrays.toString(getInt8()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case UINT1:
-                        sb.append(Arrays.toString(getUint1()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case UINT2:
-                        sb.append(Arrays.toString(getUint2()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case UINT4:
-                        sb.append(Arrays.toString(getUint4()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case UINT8:
-                        sb.append(Arrays.toString(getUint8()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case FLOAT4:
-                        sb.append(Arrays.toString(getFloat4()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case FLOAT8:
-                        sb.append(Arrays.toString(getFloat8()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case BOOLEAN:
-                        sb.append(Arrays.toString(getBoolean()).replaceAll("[\\[\\],]", ""));
-                        break;
-                    case BINARY:
-                        StringBuilder hex = new StringBuilder();
-                        for (byte b : value) {
-                            hex.append(String.format("0x%02X ", b));
-                        }
-                        sb.append(hex.toString().trim());
-                        break;
-                    default:
-                        sb.append("...");
-                        break;
-                }
-            }
-            sb.append(">\n");
-        }
+        return SmlPrinter.DEFAULT.toSml(this);
     }
 }
+
